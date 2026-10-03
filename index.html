@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#071b13">
+  <meta name="description" content="Tabinet — joc de cărți românesc, direct în browser.">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  
+  <title>Tabinet • v0.7.6</title>
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="app" aria-live="polite">
+    <!-- Loading -->
+    <section id="loadingScreen" class="screen screen-loading" aria-label="Se încarcă jocul">
+      <div class="loading-brand">
+        <div class="logo-card-stack" aria-hidden="true">
+          <span class="mini-card mini-back"></span>
+          <span class="mini-card mini-red">A♥</span>
+          <span class="mini-card mini-dark">K♠</span>
+        </div>
+        <p class="eyebrow">JOC DE CĂRȚI</p>
+        <h1>Tabinet</h1>
+        <p class="loading-text" id="loadingText">Se pregătește masa…</p>
+        <div class="loading-bar"><span id="loadingBarFill"></span></div>
+      </div>
+    </section>
+
+    <!-- Main menu -->
+    <section id="menuScreen" class="screen hidden" aria-labelledby="menuTitle">
+      <header class="menu-header">
+        <button class="profile-menu-button" id="profileMenuBtn" type="button" aria-label="Profil">
+          <span class="profile-avatar-mini" id="profileAvatarMini" aria-hidden="true"></span>
+          <span class="profile-menu-copy"><strong id="profileMenuName">Jucător</strong><small id="profileMenuId">ID: --</small></span>
+        </button>
+        <div>
+          <p class="eyebrow">TABINET</p>
+          <h2 id="menuTitle">Joacă simplu. Ia tot.</h2>
+          <p class="menu-subtitle">Intră într-o partidă în câteva secunde.</p>
+        </div>
+        <button class="icon-button" id="menuInstallBtn" type="button" hidden aria-label="Instalează PWA">↗</button>
+      </header>
+
+      <div class="menu-layout">
+        <div class="menu-hero-card">
+          <div class="hero-cards" aria-hidden="true">
+            <div class="hero-card hero-card-a">A<span>♥</span></div>
+            <div class="hero-card hero-card-k">K<span>♣</span></div>
+            <div class="hero-card hero-card-10">10<span>♦</span></div>
+          </div>
+          <div class="menu-copy">
+            <span class="pill" id="menuPill">MVP • BOT DISPONIBIL</span>
+            <h3 id="menuHeroTitle">O partidă relaxată, direct în browser.</h3>
+            <p id="menuHeroCopy">Nu ai nevoie de instalări. Alegi adversarul, dificultatea și intri la masă.</p>
+          </div>
+          <button class="primary menu-play-button" id="menuPlayBtn" type="button">Joacă</button>
+        </div>
+
+        <div class="menu-actions">
+          <button class="menu-action" id="settingsBtn" type="button">
+            <span class="menu-action-icon">⚙</span>
+            <span><strong>Setări</strong><small>Sunete și animații</small></span>
+            <span class="chevron">›</span>
+          </button>
+          <button class="menu-action disabled-action" id="realPlayerBtn" type="button" disabled>
+            <span class="menu-action-icon">♟</span>
+            <span><strong>Player real</strong><small>În curând</small></span>
+            <span class="coming-soon-badge">ÎN CURÂND</span>
+          </button>
+          <button class="menu-action" id="rulesMenuBtn" type="button">
+            <span class="menu-action-icon">?</span>
+            <span><strong>Reguli</strong><small>Vezi cum se joacă</small></span>
+            <span class="chevron">›</span>
+          </button>
+        </div>
+      </div>
+
+      <footer class="menu-footer">
+        <span>Browser-first • PWA</span>
+        <span id="menuVersion">v0.7.6 • Profil + statistici + start aleator</span>
+      </footer>
+
+      <aside id="resumeMatchBar" class="resume-match-bar hidden" aria-live="assertive" aria-label="Partidă pusă pe pauză">
+        <div class="resume-match-copy">
+          <div class="resume-match-kicker" id="resumeMatchKicker">PARTIDĂ PUSĂ PE PAUZĂ</div>
+          <strong id="resumeMatchTitle">Poți reveni în această partidă.</strong>
+          <small id="resumeMatchCopy">Botul așteaptă. Dacă nu revii la timp, partida va fi declarată pierdută.</small>
+        </div>
+        <div class="resume-match-actions">
+          <div class="resume-match-timer" aria-live="polite"><span id="resumeCountdown">10</span><small id="resumeSecondsLabel">sec</small></div>
+          <button class="secondary" id="abandonMatchBtn" type="button">Abandonează</button>
+          <button class="primary" id="rejoinMatchBtn" type="button">Reintră în meci</button>
+        </div>
+      </aside>
+    </section>
+
+    <!-- Mode select -->
+    <section id="modeScreen" class="screen hidden" aria-labelledby="modeTitle">
+      <button class="back-button" id="modeBackBtn" type="button">← Înapoi</button>
+      <div class="screen-heading">
+        <p class="eyebrow">PASUL 1</p>
+        <h2 id="modeTitle">Cum vrei să joci?</h2>
+        <p>Alege un adversar. Multiplayer-ul cu alt jucător vine în curând.</p>
+      </div>
+      <div class="choice-grid choice-grid-mode">
+        <button class="big-choice active-choice" id="botModeBtn" type="button">
+          <span class="choice-art bot-art">BOT</span>
+          <span class="big-choice-title">Cu bot</span>
+          <span class="big-choice-copy">Joacă acum împotriva unui adversar controlat de joc.</span>
+          <span class="choice-cta">Alege →</span>
+        </button>
+        <button class="big-choice disabled-choice" type="button" disabled>
+          <span class="choice-art player-art">2P</span>
+          <span class="big-choice-title">Cu player real</span>
+          <span class="big-choice-copy">Conectarea online este pregătită pentru o etapă viitoare.</span>
+          <span class="choice-cta">În curând</span>
+        </button>
+      </div>
+      <div class="mode-history-card">
+        <div>
+          <span class="history-mini-kicker" id="modeHistoryKicker">ISTORIC</span>
+          <strong id="modeHistoryTitle">Log-uri meciuri</strong>
+          <small id="modeHistoryCopy">Vezi cu cine ai jucat, scorurile și cum a decurs partida.</small>
+        </div>
+        <button class="secondary" id="openHistoryBtn" type="button">Vezi log-urile</button>
+      </div>
+    </section>
+
+    <!-- Difficulty select -->
+    <section id="difficultyScreen" class="screen hidden" aria-labelledby="difficultyTitle">
+      <button class="back-button" id="difficultyBackBtn" type="button">← Înapoi</button>
+      <div class="screen-heading">
+        <p class="eyebrow">PASUL 2</p>
+        <h2 id="difficultyTitle">Cât de greu vrei să fie?</h2>
+        <p>Alege ritmul și nivelul botului.</p>
+      </div>
+      <div class="difficulty-grid">
+        <button class="difficulty-card" data-difficulty="easy" type="button">
+          <span class="difficulty-icon">•</span>
+          <span class="difficulty-name">Ușor</span>
+          <span class="difficulty-copy">Bot relaxat, potrivit pentru primele partide.</span>
+        </button>
+        <button class="difficulty-card" data-difficulty="medium" type="button">
+          <span class="difficulty-icon">••</span>
+          <span class="difficulty-name">Mediu</span>
+          <span class="difficulty-copy">Bot echilibrat, caută capturi și puncte.</span>
+        </button>
+        <button class="difficulty-card" data-difficulty="hard" type="button">
+          <span class="difficulty-icon">•••</span>
+          <span class="difficulty-name">Mare</span>
+          <span class="difficulty-copy">Bot competitiv, analizează mai multe mutări.</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Match -->
+    <section id="gameScreen" class="screen screen-game hidden" aria-labelledby="gameTitle">
+      <header class="game-topbar">
+        <div class="game-title-wrap">
+          <button class="icon-button" id="gameMenuBtn" type="button" aria-label="Ieși din meci">⌂</button>
+          <div>
+            <p class="eyebrow">TABINET</p>
+            <h2 id="gameTitle">Meci cu bot</h2>
+          </div>
+        </div>
+        <div class="game-top-actions">
+          <div class="deck-counter" id="deckCounter" title="Cărți rămase în pachet">
+            <span class="deck-icon">▧</span>
+            <span><strong id="deckCount">36</strong><small id="deckCaption">în pachet</small></span>
+          </div>
+          <button class="icon-button" id="gameSettingsBtn" type="button" aria-label="Setări">⚙</button>
+        </div>
+      </header>
+
+      <div class="match-shell">
+        <div class="match-layout">
+          <aside class="side-rail player-rail" aria-label="Punctele și tablele tale">
+            <div class="side-rail-label" id="playerRailLabel">TU</div>
+            <div class="score-pile" id="playerScorePile" aria-hidden="true"></div>
+            <small class="side-rail-caption" id="scorePileCaption">teanc de puncte</small>
+            <div class="tableau-mini-box">
+              <div class="tableau-mini-head"><span id="playerTableauLabel">TABLELE</span><small id="playerTableauActive">0 active</small></div>
+              <div class="tableau-pile" id="playerTableauPile" aria-label="Tablele tale active"></div>
+            </div>
+          </aside>
+
+          <div class="match-core">
+            <div class="score-row">
+          <div class="player-chip player-chip-you">
+            <div class="avatar">TU</div>
+            <div><strong>Tu</strong><small id="playerTurnMeta">Rândul tău</small></div>
+            <span class="score-value" id="playerScore">0</span>
+          </div>
+          <div class="round-badge" id="roundBadge">MECI</div>
+          <div class="player-chip player-chip-bot">
+            <span class="score-value" id="opponentScore">0</span>
+            <div><strong>Bot</strong><small id="botMeta">Ușor</small></div>
+            <div class="avatar bot-avatar">BOT</div>
+          </div>
+       </div>
+            <div class="table-zone" id="tableZone">
+              <div class="table-hint" id="tableHint">Așteaptă o carte.</div>
+              <div class="table-stacks" id="tableStacks"></div>
+            </div>
+            <div class="hand-zone opponent-hand" id="opponentHand" aria-label="Mâna adversarului"></div>
+            <div class="hand-zone player-hand" id="playerHand" aria-label="Mâna ta"></div>
+            <div class="action-hint" id="actionHint">Alege o carte.</div>
+          </div>
+
+          <aside class="side-rail opponent-rail" aria-label="Punctele și tablele adversarului">
+            <div class="side-rail-label" id="opponentRailLabel">BOT</div>
+            <div class="score-pile" id="opponentScorePile" aria-hidden="true"></div>
+            <small class="side-rail-caption" id="opponentScorePileCaption">teanc de puncte</small>
+            <div class="tableau-mini-box">
+              <div class="tableau-mini-head"><span id="opponentTableauLabel">TABLELE</span><small id="opponentTableauActive">0 active</small></div>
+              <div class="tableau-pile" id="opponentTableauPile" aria-label="Tablele adversarului active"></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Capture chooser -->
+  <dialog id="captureDialog" class="choice-dialog capture-dialog">
+    <div class="dialog-kicker" id="captureKicker">CAPTURĂ</div>
+    <h2 id="captureTitle">Alege cum vrei să iei.</h2>
+    <p id="captureCopy" class="dialog-copy">Poți lua una sau mai multe combinații compatibile.</p>
+    <div id="captureOptions" class="capture-options"></div>
+    <div class="dialog-actions">
+      <button class="secondary" id="cancelCaptureBtn" type="button">Anulează</button>
+      <button class="primary" id="captureConfirmBtn" type="button">Ia cărțile</button>
+    </div>
+  </dialog>
+
+  <!-- Table marker chooser -->
+  <dialog id="tableauDialog" class="choice-dialog">
+    <div class="dialog-kicker" id="tableauKicker">TABLĂ</div>
+    <h2 id="tableauTitle">Alege cartea pentru tablă</h2>
+    <p id="tableauCopy" class="dialog-copy">Alege o carte din captura de pe masă ca marcaj pentru această tablă.</p>
+    <div id="tableauOptions" class="tableau-options"></div>
+  </dialog>
+
+  <!-- Stack chooser -->
+  <dialog id="stackDialog" class="choice-dialog">
+    <div class="dialog-kicker" id="stackKicker">STIVĂ</div>
+    <h2 id="stackTitle">Pune cartea peste aceeași valoare</h2>
+    <p id="stackTarget" class="dialog-copy"></p>
+    <div id="stackOptions" class="choice-list"></div>
+    <div class="dialog-actions">
+      <button class="secondary" id="cancelStackBtn" type="button">Anulează</button>
+    </div>
+  </dialog>
+
+  <!-- Rules -->
+  <dialog id="rulesDialog" class="choice-dialog rules-dialog">
+    <div class="dialog-kicker" id="rulesKicker">REGULI</div>
+    <h2 id="rulesTitle">Cum se joacă Tabinet</h2>
+    <div class="rules-grid">
+      <article class="rule-card">
+        <div class="rule-card-head"><strong id="ruleCaptureTitle">1. Captură</strong><span>01</span></div>
+        <div class="rule-demo rule-demo-capture" aria-hidden="true"><span class="demo-card">7</span><b>+</b><span class="demo-card">3</span><span class="demo-card">4</span><span class="demo-arrow">→</span><span class="demo-card demo-accent">7</span></div>
+        <p id="ruleCaptureCopy">Joci o carte și iei combinațiile de pe masă care au aceeași valoare totală. Poți selecta mai multe combinații compatibile.</p>
+      </article>
+      <article class="rule-card">
+        <div class="rule-card-head"><strong id="ruleAceTitle">2. Asul</strong><span>02</span></div>
+        <div class="rule-demo" aria-hidden="true"><span class="demo-card red-card">A</span><span class="demo-chip">1 / 11</span><span class="demo-card">10</span><b>+</b><span class="demo-card">A</span></div>
+        <p id="ruleAceCopy">Asul poate fi folosit ca 1 sau 11. J = 12, Q = 13, K = 14.</p>
+      </article>
+      <article class="rule-card">
+        <div class="rule-card-head"><strong id="ruleStackTitle">3. Stivă</strong><span>03</span></div>
+        <div class="rule-demo rule-demo-stack" aria-hidden="true"><span class="demo-card stack-one">4</span><span class="demo-card stack-two">4</span><span class="demo-card stack-three">4</span><span class="demo-plus">= 3 cărți</span></div>
+        <p id="ruleStackCopy">Ține apăsat pe o carte și pune-o peste aceeași valoare. Stivele rămân vizibile și pot fi capturate împreună.</p>
+      </article>
+      <article class="rule-card">
+        <div class="rule-card-head"><strong id="rulePointsTitle">4. Puncte</strong><span>04</span></div>
+        <div class="rule-demo rule-demo-points" aria-hidden="true"><span class="demo-point">A ♥</span><span class="demo-point">10 ♦</span><span class="demo-point">2 ♣</span><span class="demo-point">+1 / +2 / +1</span></div>
+        <p id="rulePointsCopy">A, 10, J, Q, K și 2♣ valorează 1 punct la captură; 10♦ valorează 2. Dacă 2♣ este marcaj de tablă, primește +1 cât timp tabla este activă.</p>
+      </article>
+      <article class="rule-card">
+        <div class="rule-card-head"><strong id="ruleTableauTitle">5. Tablă</strong><span>05</span></div>
+        <div class="rule-demo rule-demo-tableau" aria-hidden="true"><span class="demo-card">A</span><span class="demo-card">9</span><span class="demo-card">K</span><span class="demo-arrow">→</span><span class="demo-badge">TABLĂ</span></div>
+        <p id="ruleTableauCopy">Când golești masa, alegi cartea care marchează tabla. Când adversarul ia o tablă, una dintre tablele tale este anulată.</p>
+      </article>
+      <article class="rule-card">
+        <div class="rule-card-head"><strong id="ruleLastHandTitle">6. Ultima mână</strong><span>06</span></div>
+        <div class="rule-demo" aria-hidden="true"><span class="demo-card">A</span><span class="demo-card">9</span><span class="demo-card">K</span><span class="demo-arrow">→</span><span class="demo-badge">+2</span></div>
+        <p id="ruleLastHandCopy">Cine face ultima captură ia automat și toate cărțile rămase pe masă și punctele speciale ale lor.</p>
+      </article>
+    </div>
+    <button class="primary full-btn" id="closeRulesBtn" type="button">Am înțeles</button>
+  </dialog>
+
+  <!-- Settings -->
+  <dialog id="settingsDialog" class="choice-dialog settings-dialog">
+    <div class="dialog-kicker" id="settingsKicker">SETĂRI</div>
+    <h2 id="settingsTitle">Preferințe</h2>
+    <div class="setting-row sound-setting-row">
+      <div><strong id="settingsSoundLabel">Sunete</strong><small id="settingsSoundCopy">Feedback audio pentru acțiuni.</small></div>
+      <div class="sound-controls">
+        <button class="toggle-btn" id="soundToggle" type="button" aria-pressed="true">ON</button>
+        <div class="volume-control">
+          <div class="volume-slider-head"><span class="volume-icon" aria-hidden="true">◒</span><span id="soundVolumeValue">95%</span></div>
+          <input id="soundVolume" type="range" min="0" max="100" step="5" value="95" aria-label="Volum">
+        </div>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div><strong id="settingsAnimationsLabel">Animații</strong><small id="settingsAnimationsCopy">Amestecare și micro-animații.</small></div>
+      <button class="toggle-btn" id="animationToggle" type="button" aria-pressed="true">ON</button>
+    </div>
+    <div class="setting-row language-row">
+      <div><strong id="settingsLanguageLabel">Limbă</strong><small id="settingsLanguageCopy">Alege limba interfeței.</small></div>
+      <select id="languageSelect" class="language-select" aria-label="Language">
+        <option value="ro">Română</option>
+        <option value="en">English</option>
+      </select>
+    </div>
+    <div class="dialog-actions"><button class="primary" id="closeSettingsBtn" type="button">Gata</button></div>
+  </dialog>
+
+  <!-- Match history -->
+  <dialog id="historyDialog" class="choice-dialog history-dialog">
+    <div class="dialog-kicker" id="historyKicker">ISTORIC MECIURI</div>
+    <div class="history-dialog-head">
+      <div><h2 id="historyTitle">Log-uri de meciuri</h2><p class="dialog-copy" id="historyCopy">Vezi rezultatele și rezumatul fiecărei partide.</p></div>
+      <span class="history-total" id="historyTotal">0</span>
+    </div>
+    <div id="historyEntries" class="history-entries"></div>
+    <div class="dialog-actions"><button class="primary" id="closeHistoryBtn" type="button">Închide</button></div>
+  </dialog>
+
+  <!-- Profile -->
+  <dialog id="profileDialog" class="choice-dialog profile-dialog">
+    <div class="dialog-kicker" id="profileKicker">PROFIL</div>
+    <div class="profile-hero">
+      <div class="profile-avatar-large" id="profileAvatarPreview" aria-hidden="true"></div>
+      <div>
+        <h2 id="profileTitle">Profilul meu</h2>
+        <p class="dialog-copy" id="profileCopy">Numele și ID-ul tău sunt salvate local pe acest dispozitiv.</p>
+      </div>
+    </div>
+
+    <div class="profile-identity-grid">
+      <label class="profile-field">
+        <span id="profileNameLabel">Nume</span>
+        <input id="profileNameInput" type="text" maxlength="18" autocomplete="nickname" value="Jucător">
+      </label>
+      <div class="profile-field profile-id-field">
+        <span id="profileIdLabel">ID jucător</span>
+        <div class="profile-id-wrap">
+          <code id="profileIdValue">TB-XXXXXX</code>
+          <button class="secondary tiny-btn" id="copyProfileIdBtn" type="button">Copiază</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="profile-section">
+      <div class="profile-section-head"><strong id="avatarSectionTitle">Imagine de profil</strong><small id="avatarSectionCopy">Alege un avatar.</small></div>
+      <div class="avatar-template-grid" id="avatarTemplateGrid"></div>
+      <label class="avatar-upload-card" for="profileImageInput">
+        <span class="avatar-upload-icon">＋</span>
+        <span><strong id="avatarUploadTitle">Imagine proprie</strong><small id="avatarUploadCopy">Alege o imagine de pe dispozitiv.</small></span>
+        <input id="profileImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+      </label>
+    </section>
+
+    <section class="profile-section">
+      <div class="profile-section-head"><strong id="profileStatsTitle">Statistici</strong><small id="profileStatsCopy">Rezumatul meciurilor disponibile.</small></div>
+      <div class="profile-stats-grid">
+        <article class="profile-stat-card"><span id="profileWinRateLabel">Win rate</span><strong id="profileWinRate">0%</strong></article>
+        <article class="profile-stat-card"><span id="profile12hLabel">Meciuri în ultimele 12h</span><strong id="profile12h">0</strong></article>
+        <article class="profile-stat-card"><span id="profileTotalLabel">Meciuri înregistrate</span><strong id="profileTotal">0</strong></article>
+      </div>
+    </section>
+
+    <section class="profile-section">
+      <div class="profile-section-head"><strong id="profileRecentTitle">Ultimele 3 meciuri</strong><small id="profileRecentCopy">Momentan sunt afișate meciurile cu botul.</small></div>
+      <div id="profileRecentMatches" class="profile-recent-list"></div>
+    </section>
+
+    <div class="dialog-actions">
+      <button class="secondary" id="closeProfileBtn" type="button">Închide</button>
+      <button class="primary" id="saveProfileBtn" type="button">Salvează</button>
+    </div>
+  </dialog>
+
+  <!-- Game over -->
+  <dialog id="gameOverDialog" class="gameover-dialog">
+    <div class="dialog-kicker">PARTIDĂ TERMINATĂ</div>
+    <h2 id="gameOverTitle">GG!</h2>
+    <p id="gameOverCopy"></p>
+    <div class="final-score">
+      <div><span id="finalYouLabel">Tu</span><strong id="finalPlayerScore">0</strong></div>
+      <div><span id="finalBotLabel">Bot</span><strong id="finalBotScore">0</strong></div>
+    </div>
+    <div class="dialog-actions">
+      <button class="secondary" id="gameOverMenuBtn" type="button">Meniu</button>
+      <button class="primary" id="gameOverRematchBtn" type="button">Mai joci o dată</button>
+    </div>
+  </dialog>
+
+  <script src="./rules.js" defer></script>
+  <script src="./loader.js" defer></script>
+</body>
+</html>

@@ -1,467 +1,525 @@
-const SUITS = [
-  { key: 'clubs', symbol: '♣', red: false },
-  { key: 'diamonds', symbol: '♦', red: true },
-  { key: 'hearts', symbol: '♥', red: true },
-  { key: 'spades', symbol: '♠', red: false },
-];
-const RANKS = [
-  { key: 'A', value: 11 }, { key: '2', value: 2 }, { key: '3', value: 3 }, { key: '4', value: 4 },
-  { key: '5', value: 5 }, { key: '6', value: 6 }, { key: '7', value: 7 }, { key: '8', value: 8 },
-  { key: '9', value: 9 }, { key: '10', value: 10 }, { key: 'J', value: 12 }, { key: 'Q', value: 13 }, { key: 'K', value: 14 }
-];
+(() => {
+  'use strict';
 
-const state = {
-  screen: 'loading',
-  selectedMode: 'bot',
-  difficulty: 'easy',
-  deck: [],
-  tableStacks: [],
-  hand: [],
-  opponentHand: [],
-  score: 0,
-  opponentScore: 0,
-  captured: { player: [], opponent: [] },
-  played: { player: [], opponent: [] },
-  tableauMarkers: { player: [], opponent: [] },
-  lastTaker: null,
-  message: '',
-  round: 1,
-  lastDeal: false,
-  pendingPlay: null,
-  pendingCaptureGroups: [],
-  pendingSelection: [],
-  pendingStackCard: null,
-  pendingPlaySourceRect: null,
-  waitingForTableau: false,
-  dealing: false,
-  matchToken: 0,
-  nextStackId: 1,
-  matchEvents: [],
-  visualAnimation: null,
-  animating: false,
-  draggingCardId: null,
-  nativeDrag: null,
-  lastRenderedTurn: null,
-  lastRenderedScores: { player: null, opponent: null },
-  pendingDealSourceRect: null,
-  turn: 'menu',
-};
+  const SUITS = [
+    { key:'clubs', symbol:'♣', red:false },
+    { key:'diamonds', symbol:'♦', red:true },
+    { key:'hearts', symbol:'♥', red:true },
+    { key:'spades', symbol:'♠', red:false }
+  ];
+  const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
 
-const $ = (id) => document.getElementById(id);
-const rules = window.TabinetRules;
-let deferredPrompt = null;
-let audioContext = null;
-let settings = loadSettings();
-let battleHistory = loadBattleHistory();
-let profile = loadProfile();
-let pausedMatch = loadPausedMatch();
-let resumeTimer = null;
-
-const dialogElements = () => Array.from(document.querySelectorAll('dialog'));
-let modalLockedScrollY = 0;
-let modalScrollWasLocked = false;
-function syncModalScrollLock() {
-  const hasOpenDialog = dialogElements().some(dialog => dialog.open);
-  const html = document.documentElement;
-  const body = document.body;
-  if (!body) return;
-
-  html.classList.toggle('modal-scroll-locked', hasOpenDialog);
-  body.classList.toggle('modal-scroll-locked', hasOpenDialog);
-
-  if (hasOpenDialog && !modalScrollWasLocked) {
-    modalLockedScrollY = window.scrollY || window.pageYOffset || 0;
-    body.style.position = 'fixed';
-    body.style.top = `-${modalLockedScrollY}px`;
-    body.style.left = '0';
-    body.style.right = '0';
-    body.style.width = '100%';
-    modalScrollWasLocked = true;
-    return;
-  }
-
-  if (!hasOpenDialog && modalScrollWasLocked) {
-    body.style.position = '';
-    body.style.top = '';
-    body.style.left = '';
-    body.style.right = '';
-    body.style.width = '';
-    modalScrollWasLocked = false;
-    window.scrollTo(0, modalLockedScrollY);
-  }
-}
-
-function preventBackgroundScroll(event) {
-  if (!document.body.classList.contains('modal-scroll-locked')) return;
-  // The profile dialog is the only modal allowed to scroll internally.
-  // Background scrolling remains locked, while wheel/touch gestures inside
-  // #profileDialog are handled by the dialog's own scroll container.
-  const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest('#profileDialog')) return;
-  event.preventDefault();
-}
-
-function preventMainMenuScroll(event) {
-  if (!document.body.classList.contains('menu-screen-locked')) return;
-  event.preventDefault();
-}
-
-const modalScrollObserver = new MutationObserver(syncModalScrollLock);
-
-function loadSettings() {
-  try {
-    const storedVolume = Number(localStorage.getItem('tabinet-volume'));
-    const volume = Number.isFinite(storedVolume) ? Math.min(1, Math.max(0, storedVolume)) : 0.95;
-    return {
-      sound: localStorage.getItem('tabinet-sound') !== 'off',
-      volume,
-      animations: localStorage.getItem('tabinet-animations') !== 'off',
-      language: localStorage.getItem('tabinet-language') || 'ro',
-    };
-  } catch {
-    return { sound: true, volume: 0.95, animations: true, language: 'ro' };
-  }
-}
-
-function loadBattleHistory() {
-  try {
-    const raw = localStorage.getItem('tabinet-battle-log');
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.slice(0, 8) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSettings() {
-  try {
-    localStorage.setItem('tabinet-sound', settings.sound ? 'on' : 'off');
-    localStorage.setItem('tabinet-volume', String(settings.volume));
-    localStorage.setItem('tabinet-animations', settings.animations ? 'on' : 'off');
-    localStorage.setItem('tabinet-language', settings.language);
-  } catch { /* storage is optional */ }
-}
-
-function saveBattleHistory() {
-  try {
-    localStorage.setItem('tabinet-battle-log', JSON.stringify(battleHistory));
-  } catch { /* storage is optional */ }
-}
-
-const PAUSED_MATCH_KEY = 'tabinet-paused-match';
-const PAUSE_WINDOW_MS = 10_000;
-function loadPausedMatch() {
-  try {
-    const raw = localStorage.getItem(PAUSED_MATCH_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== 1 || Number(parsed.expiresAt) <= Date.now()) {
-      localStorage.removeItem(PAUSED_MATCH_KEY);
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-function savePausedMatch(snapshot) {
-  pausedMatch = snapshot;
-  try { localStorage.setItem(PAUSED_MATCH_KEY, JSON.stringify(snapshot)); } catch {}
-}
-function clearPausedMatch() {
-  pausedMatch = null;
-  if (resumeTimer) { clearInterval(resumeTimer); resumeTimer = null; }
-  try { localStorage.removeItem(PAUSED_MATCH_KEY); } catch {}
-  $('resumeMatchBar')?.classList.add('hidden');
-}
-
-const AVATAR_TEMPLATES = [
-  { id:'01', bg:'#1c5842', accent:'#e9c76f', glyph:'◆' },
-  { id:'02', bg:'#173f59', accent:'#e9c76f', glyph:'✦' },
-  { id:'03', bg:'#5a3b2e', accent:'#f0d98f', glyph:'♣' },
-  { id:'04', bg:'#3d315c', accent:'#e9c76f', glyph:'◈' },
-  { id:'05', bg:'#234b55', accent:'#f0d98f', glyph:'✧' },
-  { id:'06', bg:'#5b3b22', accent:'#e9c76f', glyph:'♠' },
-];
-
-function makeDefaultProfileId() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out = 'TB-';
-  for (let i = 0; i < 8; i += 1) out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return out;
-}
-
-function loadProfile() {
-  try {
-    const raw = localStorage.getItem('tabinet-profile');
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed && typeof parsed === 'object') {
-      return { name: String(parsed.name || 'Jucător').slice(0,18), id: String(parsed.id || makeDefaultProfileId()), avatar: parsed.avatar || { kind:'template', id:'01' } };
-    }
-  } catch {}
-  return { name: 'Jucător', id: makeDefaultProfileId(), avatar: { kind:'template', id:'01' } };
-}
-
-function saveProfile() {
-  try { localStorage.setItem('tabinet-profile', JSON.stringify(profile)); } catch {}
-}
-
-function getAvatarTemplate(id) { return AVATAR_TEMPLATES.find(item => item.id === id) || AVATAR_TEMPLATES[0]; }
-
-function avatarMarkup(avatar) {
-  if (avatar?.kind === 'custom' && avatar.dataUrl) {
-    return `<img src="${escapeHtml(avatar.dataUrl)}" alt="" class="avatar-image">`;
-  }
-  const tpl = getAvatarTemplate(avatar?.id);
-  return `<span class="avatar-template-art" style="--avatar-bg:${tpl.bg};--avatar-accent:${tpl.accent}"><span class="avatar-glyph">${tpl.glyph}</span><span class="avatar-silhouette"></span></span>`;
-}
-
-function renderAvatar(el, avatar = profile.avatar) {
-  if (!el) return;
-  el.innerHTML = avatarMarkup(avatar);
-}
-
-function profileHistory() {
-  const realMatches = battleHistory.filter(entry => entry.mode === 'player');
-  return realMatches.length ? realMatches : battleHistory.filter(entry => entry.mode === 'bot');
-}
-function entryResult(entry) {
-  if (entry?.result === 'win' || entry?.result === 'loss' || entry?.result === 'draw') return entry.result;
-  return Number(entry?.playerScore) === Number(entry?.botScore) ? 'draw' : Number(entry?.playerScore) > Number(entry?.botScore) ? 'win' : 'loss';
-}
-function profileStats() {
-  const matches = profileHistory();
-  const wins = matches.filter(entry => entryResult(entry) === 'win').length;
-  const twelveHoursAgo = Date.now() - 12 * 60 * 60 * 1000;
-  const last12h = matches.filter(entry => Number(entry.timestamp || entry.id || 0) >= twelveHoursAgo).length;
-  return { matches, wins, last12h, winRate: matches.length ? Math.round((wins / matches.length) * 100) : 0 };
-}
-
-function renderProfile() {
-  renderAvatar($('profileAvatarPreview'));
-  renderAvatar($('profileAvatarMini'));
-  if ($('profileMenuName')) $('profileMenuName').textContent = profile.name;
-  if ($('profileMenuId')) $('profileMenuId').textContent = `ID: ${profile.id}`;
-  if ($('profileNameInput') && document.activeElement !== $('profileNameInput')) $('profileNameInput').value = profile.name;
-  if ($('profileIdValue')) $('profileIdValue').textContent = profile.id;
-
-  const grid = $('avatarTemplateGrid');
-  if (grid) {
-    grid.innerHTML = '';
-    AVATAR_TEMPLATES.forEach(template => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'avatar-template-choice';
-      button.dataset.avatarId = template.id;
-      button.classList.toggle('selected', profile.avatar?.kind === 'template' && profile.avatar?.id === template.id);
-      button.setAttribute('aria-label', `${t('avatarTemplate')} ${template.id}`);
-      button.innerHTML = `<span class="avatar-template-art" style="--avatar-bg:${template.bg};--avatar-accent:${template.accent}"><span class="avatar-glyph">${template.glyph}</span><span class="avatar-silhouette"></span></span><small>${template.id}</small>`;
-      button.addEventListener('click', () => {
-        profile.avatar = { kind:'template', id:template.id };
-        saveProfile();
-        renderProfile();
-        playTone('button');
-      });
-      grid.appendChild(button);
-    });
-  }
-
-  const stats = profileStats();
-  if ($('profileWinRate')) $('profileWinRate').textContent = `${stats.winRate}%`;
-  if ($('profile12h')) $('profile12h').textContent = stats.last12h;
-  if ($('profileTotal')) $('profileTotal').textContent = stats.matches.length;
-  const recent = $('profileRecentMatches');
-  if (recent) {
-    recent.innerHTML = '';
-    if (!stats.matches.length) {
-      recent.innerHTML = `<div class="profile-empty">${t('profileNoMatches')}</div>`;
-    } else {
-      stats.matches.slice(0,3).forEach(entry => {
-        const item = document.createElement('div');
-        item.className = 'profile-recent-row';
-        const outcome = entryResult(entry);
-        const won = outcome === 'win';
-        const draw = outcome === 'draw';
-        const mode = entry.mode === 'player' ? t('playerMode') : t('botMode');
-        const result = entry.abandoned ? t('abandoned') : draw ? t('draw') : won ? t('profileWin') : t('profileLoss');
-        item.innerHTML = `<div><span class="battle-mode ${entry.mode === 'player' ? 'player-mode' : 'bot-mode'}">${mode}</span><strong>${escapeHtml(entry.opponentName || t('opponentBot'))}</strong></div><div class="profile-recent-right"><strong>${entry.playerScore} — ${entry.botScore}</strong><small>${escapeHtml(entry.date || t('dateNow'))} · ${escapeHtml(result)}</small></div>`;
-        recent.appendChild(item);
-      });
-    }
-  }
-  document.querySelectorAll('.avatar-template-choice').forEach(btn => btn.classList.toggle('selected', profile.avatar?.kind === 'template' && profile.avatar?.id === btn.dataset.avatarId));
-}
-
-function openProfile() { renderProfile(); $('profileDialog').showModal(); }
-
-function currentProfileName() {
-  const value = ($('profileNameInput')?.value || '').trim().replace(/s+/g,' ');
-  return value.slice(0,18) || 'Jucător';
-}
-
-function playTone(kind = 'click') {
-  if (!settings.sound || settings.volume <= 0) return;
-  try {
-    audioContext ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audioContext.state === 'suspended') void audioContext.resume();
-    const patterns = {
-      button: [{f:420, to:500, d:0, l:.08, w:'sine', a:1}, {f:620, to:620, d:.035, l:.055, w:'triangle', a:.55}],
-      click: [{f:430, to:470, d:0, l:.065, w:'sine', a:.85}],
-      place: [{f:210, to:250, d:0, l:.10, w:'triangle', a:.95}, {f:360, to:390, d:.05, l:.09, w:'sine', a:.85}],
-      stack: [{f:250, to:285, d:0, l:.08, w:'triangle', a:.95}, {f:430, to:470, d:.055, l:.10, w:'sine', a:.95}],
-      capture: [{f:380, to:430, d:0, l:.09, w:'triangle', a:.85}, {f:560, to:620, d:.07, l:.12, w:'sine', a:1}, {f:780, to:900, d:.16, l:.16, w:'sine', a:1.1}],
-      nextHand: [{f:280, to:315, d:0, l:.08, w:'triangle', a:.8}, {f:400, to:450, d:.09, l:.09, w:'sine', a:.9}, {f:560, to:650, d:.18, l:.13, w:'sine', a:1}],
-      shuffle: [{f:190, to:260, d:0, l:.11, w:'triangle', a:.7}, {f:310, to:390, d:.12, l:.11, w:'triangle', a:.8}, {f:240, to:330, d:.24, l:.11, w:'triangle', a:.75}, {f:360, to:480, d:.36, l:.10, w:'sine', a:.85}],
-      success: [{f:520, to:610, d:0, l:.09, w:'sine', a:.9}, {f:700, to:830, d:.09, l:.12, w:'sine', a:1}],
-      gameover: [{f:430, to:380, d:0, l:.14, w:'triangle', a:.85}, {f:350, to:300, d:.16, l:.14, w:'sine', a:.8}, {f:560, to:720, d:.32, l:.22, w:'sine', a:1.1}],
-    };
-    const notes = patterns[kind] || patterns.button;
-    const now = audioContext.currentTime;
-    const master = Math.min(1, Math.max(0, settings.volume));
-    notes.forEach(note => {
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      osc.type = note.w || 'sine';
-      osc.frequency.setValueAtTime(note.f, now + note.d);
-      if (note.to && note.to !== note.f) osc.frequency.linearRampToValueAtTime(note.to, now + note.d + note.l * .82);
-      gain.gain.setValueAtTime(0.0001, now + note.d);
-      const peak = 0.12 * master * (note.a ?? 1);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak), now + note.d + 0.009);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + note.d + note.l);
-      osc.connect(gain).connect(audioContext.destination);
-      osc.start(now + note.d);
-      osc.stop(now + note.d + note.l + 0.025);
-    });
-  } catch { /* audio is optional */ }
-}
-
-function animationsEnabled() { return Boolean(settings.animations); }
-function motionDelay(kind='action') {
-  const full = { place:390, stack:420, capture:500, botPlace:390, botCapture:510, deal:920, turn:220 };
-  const reduced = { place:140, stack:145, capture:165, botPlace:135, botCapture:170, deal:240, turn:130 };
-  return (animationsEnabled() ? full : reduced)[kind] ?? (animationsEnabled() ? 360 : 130);
-}
-function queueVisualAnimation(spec) { state.visualAnimation = animationsEnabled() ? spec : null; }
-function beginActionMotion() { state.animating = true; }
-function releaseActionMotion(kind='action') { window.setTimeout(() => { state.animating = false; renderGame(); }, motionDelay(kind)); }
-
-function cardVisual(card) {
-  const el = document.createElement('div');
-  el.className = `flight-card${card?.red ? ' red' : ''}`;
-  el.innerHTML = `<span class="rank">${card?.rank ?? ''}</span><span class="center">${card?.symbol ?? '✦'}</span><span class="suit">${card?.symbol ?? ''}</span>`;
-  return el;
-}
-
-function flyCard(card, fromRect, targetEl, opts = {}) {
-  if (!animationsEnabled() || !fromRect || !targetEl) return;
-  const targetRect = targetEl.getBoundingClientRect();
-  if (!targetRect.width || !targetRect.height) return;
-  const ghost = cardVisual(card || {});
-  ghost.classList.add(`flight-${opts.kind || 'move'}`);
-  ghost.style.left = `${fromRect.left}px`;
-  ghost.style.top = `${fromRect.top}px`;
-  ghost.style.width = `${Math.max(48, fromRect.width)}px`;
-  ghost.style.height = `${Math.max(68, fromRect.height)}px`;
-  ghost.style.setProperty('--flight-rot', `${opts.rotate ?? (Math.random() * 8 - 4)}deg`);
-  document.body.appendChild(ghost);
-  const startX = fromRect.left + fromRect.width / 2;
-  const startY = fromRect.top + fromRect.height / 2;
-  const endX = targetRect.left + targetRect.width / 2;
-  const endY = targetRect.top + targetRect.height / 2;
-  const dx = endX - startX;
-  const dy = endY - startY;
-  const duration = opts.duration ?? (opts.kind === 'capture' ? 470 : 370);
-  const delayMs = opts.delay ?? 0;
-  ghost.style.transition = `transform ${duration}ms cubic-bezier(.18,.86,.24,1), opacity ${duration * .72}ms ease-out, filter ${duration}ms ease-out`;
-  const begin = () => {
-    ghost.classList.add('flight-active');
-    ghost.style.transform = `translate(${dx}px,${dy}px) scale(${opts.scale ?? .42}) rotate(${(opts.rotate ?? 0) + (opts.kind === 'capture' ? 8 : 0)}deg)`;
-    ghost.style.opacity = '0';
-    ghost.style.filter = 'brightness(1.08) drop-shadow(0 18px 28px rgba(0,0,0,.28))';
+  const state = {
+    screen:'menu',
+    deck:[],
+    table:[],
+    hand:[],
+    botHand:[],
+    captured: {player:[],bot:[]},
+    score: {player:0,bot:0},
+    turn:'player',
+    difficulty:'easy',
+    round:1,
+    lastTaker:null,
+    nextId:1,
+    pendingCard:null,
+    pendingGroups:[],
+    pendingSelections:[],
+    startedAt:Date.now(),
+    history: readJSON('tabinet-battle-log', [])
   };
-  if (delayMs) window.setTimeout(() => requestAnimationFrame(begin), delayMs);
-  else requestAnimationFrame(begin);
-  window.setTimeout(() => ghost.remove(), duration + delayMs + 80);
-}
 
-function pulseElement(id, className = 'anim-pop') {
-  if (!animationsEnabled()) return;
-  const el = $(id);
-  if (!el) return;
-  el.classList.remove(className);
-  void el.offsetWidth;
-  el.classList.add(className);
-  window.setTimeout(() => el.classList.remove(className), 620);
-}
+  const $ = id => document.getElementById(id);
+  const qs = sel => document.querySelector(sel);
+  const rules = window.TabinetRules || null;
 
-function runVisualAnimation(spec) {
-  if (!animationsEnabled() || !spec) return;
-  if (spec.kind === 'place' || spec.kind === 'stack') {
-    const target = $(spec.targetId || 'tableZone');
-    flyCard(spec.card, spec.fromRect, target, { kind: spec.kind, duration: spec.kind === 'stack' ? 400 : 360, scale: .52 });
-    pulseElement('tableZone', 'anim-table');
-    return;
+  const settings = {
+    sound: localStorage.getItem('tabinet-sound') !== 'off',
+    animations: localStorage.getItem('tabinet-animations') !== 'off',
+    volume: Math.max(0, Math.min(100, Number(localStorage.getItem('tabinet-volume') || 95))),
+    language: localStorage.getItem('tabinet-language') || 'ro'
+  };
+
+  const profile = Object.assign(
+    { name:'Jucător', id:'TB-'+Math.random().toString(36).slice(2,10).toUpperCase() },
+    readJSON('tabinet-profile', {})
+  );
+
+  function readJSON(key, fallback) {
+    try {
+      const v = JSON.parse(localStorage.getItem(key));
+      return v ?? fallback;
+    } catch { return fallback; }
   }
-  if (spec.kind === 'capture') {
-    const target = $(spec.targetId || 'playerScorePile');
-    const cards = Array.isArray(spec.captured) ? spec.captured : [];
-    cards.slice(0, 9).forEach((card, index) => {
-      flyCard(card, spec.fromRect, target, { kind: 'capture', delay: index * 45, duration: 470, scale: .38, rotate: (index % 2 ? 5 : -5) });
-    });
-    pulseElement(spec.targetId || 'playerScorePile', 'anim-score');
-    pulseElement('tableZone', 'anim-table');
-    return;
+
+  function writeJSON(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
   }
-  if (spec.kind === 'deal') {
-    const deckRect = spec.fromRect;
-    const targets = [
-      { id: 'tableCards', count: spec.tableCount || 0 },
-      { id: 'playerHand', count: spec.playerCount || 0 },
-      { id: 'opponentHand', count: spec.opponentCount || 0 },
-    ];
-    let offset = 0;
-    targets.forEach(targetSpec => {
-      const target = $(targetSpec.id);
-      for (let i = 0; i < targetSpec.count; i += 1) {
-        flyCard({ rank: '', symbol: '✦', red: false }, deckRect, target, {
-          kind: 'deal', delay: offset * 48, duration: 420, scale: targetSpec.id === 'opponentHand' ? .42 : .48, rotate: (i % 2 ? 4 : -4)
-        });
-        offset += 1;
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  function setLoading(text, percent) {
+    const t = $('loadingText');
+    const b = $('loadingBarFill');
+    if (t) t.textContent = text;
+    if (b) b.style.width = percent + '%';
+  }
+
+  function card(rank, suitKey) {
+    const s = SUITS.find(x => x.key === suitKey);
+    const value = rank === 'A' ? 11 : rank === 'J' ? 12 : rank === 'Q' ? 13 : rank === 'K' ? 14 : Number(rank);
+    return { id:state.nextId++, rank, suit:suitKey, symbol:s.symbol, red:s.red, value };
+  }
+
+  function createDeck() {
+    const d = [];
+    for (const s of SUITS) for (const r of RANKS) d.push(card(r, s.key));
+    return d;
+  }
+
+  function shuffle(d) {
+    for (let i=d.length-1;i>0;i--) {
+      const j = Math.floor(Math.random()*(i+1));
+      [d[i],d[j]]=[d[j],d[i]];
+    }
+    return d;
+  }
+
+  function valueOptions(c) { return c.rank === 'A' ? [1,11] : [c.value]; }
+
+  function findCaptures(played, table) {
+    if (rules && typeof rules.allCaptureGroups === 'function') return rules.allCaptureGroups(played, table);
+    const out=[];
+    for (const v of valueOptions(played)) {
+      const combos=[];
+      function dfs(i,total,picked) {
+        if (total===v && picked.length) combos.push([...picked]);
+        if (total>=v) return;
+        for (let k=i;k<table.length;k++) for (const cv of valueOptions(table[k])) {
+          if (total+cv<=v) dfs(k+1,total+cv,[...picked,table[k]]);
+        }
       }
-    });
-    pulseElement('deckCounter', 'anim-pop');
+      dfs(0,0,[]);
+      combos.forEach(g=>out.push(g));
+    }
+    const seen=new Set();
+    return out.filter(g=>{const k=g.map(x=>x.id).sort().join(','); if(seen.has(k)) return false; seen.add(k); return true;});
   }
-}
 
-function getCardRectById(cardId) {
-  const el = document.querySelector(`.player-hand .card[data-id="${cardId}"]`);
-  return el ? el.getBoundingClientRect() : null;
-}
+  function groupText(group) {
+    return group.map(c => c.rank+c.symbol).join(' + ');
+  }
 
-function startAnimationsForRender() {
-  const spec = state.visualAnimation;
-  state.visualAnimation = null;
-  const turnChanged = state.lastRenderedTurn !== null && state.lastRenderedTurn !== state.turn;
-  const playerScoreChanged = state.lastRenderedScores.player !== null && state.lastRenderedScores.player !== state.score;
-  const opponentScoreChanged = state.lastRenderedScores.opponent !== null && state.lastRenderedScores.opponent !== state.opponentScore;
-  state.lastRenderedTurn = state.turn;
-  state.lastRenderedScores = { player: state.score, opponent: state.opponentScore };
-  requestAnimationFrame(() => {
-    if (turnChanged) pulseElement('turnBanner', 'anim-turn');
-    if (playerScoreChanged) pulseElement('playerScore', 'anim-score-text');
-    if (opponentScoreChanged) pulseElement('opponentScore', 'anim-score-text');
-    runVisualAnimation(spec);
+  function specialPoints(c) {
+    if (rules?.specialPoints) return rules.specialPoints(c);
+    if (c.rank==='2' && c.suit==='clubs') return 1;
+    if (['A','10','J','Q','K'].includes(c.rank)) return 1;
+    return 0;
+  }
+
+  function scoreCapture(cards, tableMade, marker) {
+    let s=cards.reduce((n,c)=>n+specialPoints(c),0);
+    if (tableMade) s += marker && rules?.tableMarkerBonus ? rules.tableMarkerBonus(marker) : 1;
+    return s;
+  }
+
+  function visibleScreens() {
+    ['loadingScreen','menuScreen','modeScreen','difficultyScreen','gameScreen'].forEach(id=>{
+      const el=$(id);
+      if (el) el.classList.toggle('hidden', id !== ({
+        loading:'loadingScreen',menu:'menuScreen',mode:'modeScreen',difficulty:'difficultyScreen',game:'gameScreen'
+      }[state.screen]));
+    });
+  }
+
+  function showScreen(name) {
+    state.screen=name;
+    visibleScreens();
+    if (name==='menu') refreshMenu();
+  }
+
+  function refreshMenu() {
+    if ($('profileMenuName')) $('profileMenuName').textContent = profile.name || 'Jucător';
+    if ($('profileMenuId')) $('profileMenuId').textContent = 'ID: ' + profile.id;
+    const resume = $('resumeMatchBar');
+    if (resume) resume.classList.add('hidden');
+  }
+
+  function resetMatch() {
+    state.deck=shuffle(createDeck());
+    state.table=[];
+    state.hand=[];
+    state.botHand=[];
+    state.captured={player:[],bot:[]};
+    state.score={player:0,bot:0};
+    state.turn='player';
+    state.round=1;
+    state.lastTaker=null;
+    state.pendingCard=null;
+    state.pendingGroups=[];
+    state.pendingSelections=[];
+    state.startedAt=Date.now();
+    dealRound(true);
+  }
+
+  function dealRound(initial=false) {
+    const count = initial ? 4 : 5;
+    if (initial) {
+      for (let i=0;i<4;i++) state.table.push(state.deck.pop());
+    }
+    while (state.hand.length<count && state.deck.length) state.hand.push(state.deck.pop());
+    while (state.botHand.length<count && state.deck.length) state.botHand.push(state.deck.pop());
+    renderGame();
+    updateDeck();
+  }
+
+  function updateDeck() {
+    if ($('deckCount')) $('deckCount').textContent = state.deck.length;
+  }
+
+  function renderGame() {
+    updateDeck();
+    if ($('playerScore')) $('playerScore').textContent = state.score.player;
+    if ($('opponentScore')) $('opponentScore').textContent = state.score.bot;
+    if ($('roundBadge')) $('roundBadge').textContent = 'MÂNA ' + state.round;
+    if ($('botMeta')) $('botMeta').textContent = ({easy:'Ușor',medium:'Mediu',hard:'Mare'})[state.difficulty] || 'Ușor';
+    if ($('playerTurnMeta')) $('playerTurnMeta').textContent = state.turn==='player' ? 'Rândul tău' : 'Botul joacă';
+    const hint = $('actionHint');
+    if (hint) hint.textContent = state.turn==='player' ? (state.hand.length ? 'Alege o carte.' : 'Se pregătește următoarea mână…') : 'Botul gândește…';
+
+    const tableZone=$('tableStacks');
+    if (tableZone) {
+      tableZone.innerHTML = state.table.length
+        ? state.table.map(c => cardHTML(c,'table-card')).join('')
+        : '<div class="empty-table">Masa este goală</div>';
+    }
+
+    const ph=$('playerHand');
+    if (ph) {
+      ph.innerHTML = state.hand.map(c => cardHTML(c,'hand-card player-card')).join('');
+      ph.querySelectorAll('[data-card-id]').forEach(el=>{
+        el.addEventListener('click', () => playPlayerCard(Number(el.dataset.cardId)));
+      });
+    }
+
+    const oh=$('opponentHand');
+    if (oh) oh.innerHTML = state.botHand.map(() => '<div class="back-card"></div>').join('');
+
+    const pPile=$('playerScorePile');
+    if (pPile) pPile.innerHTML = state.captured.player.slice(-8).map(c=>cardHTML(c,'mini-card')).join('');
+    const bPile=$('opponentScorePile');
+    if (bPile) bPile.innerHTML = state.captured.bot.slice(-8).map(c=>cardHTML(c,'mini-card')).join('');
+    if ($('playerTableauActive')) $('playerTableauActive').textContent = '0 active';
+    if ($('opponentTableauActive')) $('opponentTableauActive').textContent = '0 active';
+  }
+
+  function cardHTML(c, cls) {
+    return '<button type="button" class="card '+cls+(c.red?' red':'')+'" data-card-id="'+c.id+'"><span class="rank">'+c.rank+'</span><span class="suit">'+c.symbol+'</span></button>';
+  }
+
+  async function playPlayerCard(id) {
+    if (state.turn!=='player' || state.pendingCard) return;
+    const idx=state.hand.findIndex(c=>c.id===id);
+    if (idx<0) return;
+    const played=state.hand.splice(idx,1)[0];
+    const groups=findCaptures(played,state.table);
+    if (!groups.length) {
+      state.table.push(played);
+      state.lastTaker=null;
+      renderGame();
+      playTone('place');
+      await afterPlayerAction();
+      return;
+    }
+
+    state.pendingCard=played;
+    state.pendingGroups=groups;
+    state.pendingSelections=[];
+    openCaptureDialog();
+  }
+
+  function openCaptureDialog() {
+    const dialog=$('captureDialog');
+    const opts=$('captureOptions');
+    if (!dialog || !opts) { commitCapture([state.pendingGroups[0]]); return; }
+
+    const choices = [];
+    state.pendingGroups.forEach((g, i)=>{
+      choices.push('<label class="capture-choice"><input type="checkbox" data-group-index="'+i+'"><span>'+groupText(g)+'</span></label>');
+    });
+
+    opts.innerHTML=choices.join('');
+    opts.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
+      state.pendingSelections=[...opts.querySelectorAll('input:checked')].map(x=>Number(x.dataset.groupIndex));
+      const btn=$('captureConfirmBtn'); if(btn) btn.disabled=state.pendingSelections.length===0;
+    }));
+    $('captureTitle') && ($('captureTitle').textContent='Alege captura');
+    $('captureCopy') && ($('captureCopy').textContent='Selectează una sau mai multe combinații care nu folosesc aceeași carte.');
+    const confirm=$('captureConfirmBtn');
+    if (confirm) { confirm.disabled=true; confirm.onclick=()=>commitCapture(state.pendingSelections.map(i=>state.pendingGroups[i])); }
+    const cancel=$('cancelCaptureBtn');
+    if (cancel) cancel.onclick=()=>{ state.hand.push(state.pendingCard); state.pendingCard=null; state.pendingGroups=[]; state.pendingSelections=[]; dialog.close(); renderGame(); };
+    dialog.showModal();
+  }
+
+  async function commitCapture(selectedGroups) {
+    if (!state.pendingCard) return;
+    const selectedCards=[];
+    const ids=new Set();
+    for (const g of selectedGroups) for (const c of g) if(!ids.has(c.id)){ids.add(c.id);selectedCards.push(c);}
+    if (!selectedCards.length) return;
+
+    state.table=state.table.filter(c=>!ids.has(c.id));
+    const played=state.pendingCard;
+    const tableMade=state.table.length===0;
+    state.captured.player.push(played,...selectedCards);
+    state.lastTaker='player';
+    state.score.player += scoreCapture([...selectedCards,played],tableMade,selectedCards[0] || played);
+    state.pendingCard=null; state.pendingGroups=[]; state.pendingSelections=[];
+    const d=$('captureDialog'); if(d?.open) d.close();
+    renderGame();
+    playTone(tableMade?'success':'capture');
+    await afterPlayerAction();
+  }
+
+  async function afterPlayerAction() {
+    state.turn='bot';
+    renderGame();
+    await sleep(settings.animations?650:120);
+    if (state.botHand.length) await botMove();
+    state.turn='player';
+    renderGame();
+
+    if (!state.hand.length && !state.botHand.length) {
+      if (state.deck.length) {
+        state.round++;
+        await sleep(settings.animations?300:80);
+        dealRound(false);
+        state.turn='player';
+        renderGame();
+      } else {
+        finishMatch();
+      }
+    }
+  }
+
+  async function botMove() {
+    if (!state.botHand.length) return;
+    let chosen = null;
+    let chosenGroups = [];
+    const ordered = [...state.botHand];
+
+    if (state.difficulty==='hard') ordered.sort((a,b)=>specialPoints(b)-specialPoints(a));
+    else if (state.difficulty==='medium') ordered.sort((a,b)=> (findCaptures(b,state.table).length?1:0) - (findCaptures(a,state.table).length?1:0));
+
+    for (const c of ordered) {
+      const gs=findCaptures(c,state.table);
+      if (gs.length) { chosen=c; chosenGroups=[gs[0]]; break; }
+    }
+    if (!chosen) chosen=ordered[0];
+
+    const idx=state.botHand.findIndex(c=>c.id===chosen.id);
+    state.botHand.splice(idx,1);
+    const groups=findCaptures(chosen,state.table);
+    if (groups.length) {
+      const g=groups[0];
+      const ids=new Set(g.map(c=>c.id));
+      state.table=state.table.filter(c=>!ids.has(c.id));
+      const tableMade=state.table.length===0;
+      state.captured.bot.push(chosen,...g);
+      state.lastTaker='bot';
+      state.score.bot += scoreCapture([...g,chosen],tableMade,g[0] || chosen);
+      playTone(tableMade?'success':'capture');
+    } else {
+      state.table.push(chosen);
+      state.lastTaker=null;
+      playTone('place');
+    }
+    renderGame();
+    await sleep(settings.animations?420:90);
+  }
+
+  function finishMatch() {
+    if (state.table.length && state.lastTaker) {
+      const extra=[...state.table];
+      state.captured[state.lastTaker].push(...extra);
+      state.score[state.lastTaker] += extra.reduce((n,c)=>n+specialPoints(c),0);
+      state.table=[];
+    }
+    renderGame();
+    const result = state.score.player===state.score.bot?'draw':state.score.player>state.score.bot?'win':'loss';
+    const entry={id:Date.now(),timestamp:Date.now(),date:new Date().toLocaleString(),opponentName:'Bot',mode:'bot',difficulty:state.difficulty,playerScore:state.score.player,botScore:state.score.bot,result};
+    const hist=Array.isArray(state.history)?state.history:readJSON('tabinet-battle-log',[]);
+    hist.unshift(entry);
+    writeJSON('tabinet-battle-log',hist.slice(0,8));
+    showGameOver(entry);
+  }
+
+  function showGameOver(entry) {
+    const d=$('gameOverDialog');
+    if (!d) {
+      alert('Meci terminat: '+entry.playerScore+' — '+entry.botScore);
+      showScreen('menu');
+      return;
+    }
+    const score=$('gameOverScore');
+    if(score) score.textContent=entry.playerScore+' — '+entry.botScore;
+    const title=$('gameOverTitle');
+    if(title) title.textContent=entry.result==='draw'?'Remiză':entry.result==='win'?'Ai câștigat':'Botul a câștigat';
+    const copy=$('gameOverCopy');
+    if(copy) copy.textContent='Partida s-a încheiat. Poți începe un meci nou din meniul principal.';
+    const again=$('newMatchBtn');
+    if(again) again.onclick=()=>{d.close(); startGame();};
+    const menu=$('gameOverMenuBtn');
+    if(menu) menu.onclick=()=>{d.close();showScreen('menu');};
+    d.showModal();
+  }
+
+  function playTone(kind) {
+    if (!settings.sound || !settings.volume) return;
+    try {
+      const Ctx=window.AudioContext||window.webkitAudioContext;
+      if(!Ctx) return;
+      const ctx=new Ctx();
+      const map={click:440,place:360,capture:620,success:780,button:500};
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.type='sine';
+      osc.frequency.value=map[kind]||map.click;
+      gain.gain.value=0.0001;
+      gain.gain.exponentialRampToValueAtTime(0.05*(settings.volume/100),ctx.currentTime+0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.09);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime+0.11);
+      setTimeout(()=>ctx.close?.(),180);
+    } catch {}
+  }
+
+  function startGame() {
+    resetMatch();
+    showScreen('game');
+    renderGame();
+    playTone('success');
+  }
+
+  function wire(id, fn) {
+    const el=$(id); if(el) el.addEventListener('click',fn);
+  }
+
+  function setupSettings() {
+    const st=$('settingsDialog');
+    if($('soundToggle')){
+      $('soundToggle').ariaPressed=String(settings.sound);
+      $('soundToggle').textContent=settings.sound?'ON':'OFF';
+      $('soundToggle').onclick=()=>{
+        settings.sound=!settings.sound;
+        localStorage.setItem('tabinet-sound',settings.sound?'on':'off');
+        $('soundToggle').ariaPressed=String(settings.sound);
+        $('soundToggle').textContent=settings.sound?'ON':'OFF';
+      };
+    }
+    if($('animationToggle')){
+      $('animationToggle').ariaPressed=String(settings.animations);
+      $('animationToggle').textContent=settings.animations?'ON':'OFF';
+      $('animationToggle').onclick=()=>{
+        settings.animations=!settings.animations;
+        localStorage.setItem('tabinet-animations',settings.animations?'on':'off');
+        $('animationToggle').ariaPressed=String(settings.animations);
+        $('animationToggle').textContent=settings.animations?'ON':'OFF';
+      };
+    }
+    if($('soundVolume')){
+      $('soundVolume').value=settings.volume;
+      $('soundVolume').oninput=e=>{
+        settings.volume=Number(e.target.value);
+        localStorage.setItem('tabinet-volume',String(settings.volume));
+        if($('soundVolumeValue')) $('soundVolumeValue').textContent=settings.volume+'%';
+      };
+    }
+    if($('languageSelect')){
+      $('languageSelect').value=settings.language;
+      $('languageSelect').onchange=e=>{
+        settings.language=e.target.value;
+        localStorage.setItem('tabinet-language',settings.language);
+      };
+    }
+    wire('closeSettingsBtn',()=>st?.close());
+  }
+
+  function setupDialogs() {
+    wire('rulesMenuBtn',()=>{ const d=$('rulesDialog'); if(d) d.showModal(); });
+    wire('closeRulesBtn',()=>$('rulesDialog')?.close());
+    wire('settingsBtn',()=>$('settingsDialog')?.showModal());
+    wire('gameSettingsBtn',()=>$('settingsDialog')?.showModal());
+    wire('gameMenuBtn',()=>{ showScreen('menu'); });
+    wire('profileMenuBtn',()=>openProfile());
+    wire('openHistoryBtn',()=>openHistory());
+    wire('cancelStackBtn',()=>$('stackDialog')?.close());
+
+    document.querySelectorAll('[data-difficulty]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        state.difficulty=btn.dataset.difficulty;
+        document.querySelectorAll('[data-difficulty]').forEach(b=>b.classList.toggle('active-difficulty',b===btn));
+        startGame();
+      });
+    });
+
+    wire('captureDialog',()=>{});
+  }
+
+  function openProfile() {
+    const d=$('profileDialog'); if(!d) return;
+    const input=$('profileNameInput');
+    if(input) input.value=profile.name;
+    if($('profileIdValue')) $('profileIdValue').textContent=profile.id;
+    d.showModal();
+  }
+
+  function openHistory() {
+    const d=$('historyDialog'); if(!d) return;
+    const box=$('historyList') || $('historyBody') || $('profileRecentMatches');
+    if (box) {
+      const hist=readJSON('tabinet-battle-log',[]);
+      box.innerHTML=hist.length ? hist.map(e=>'<div class="history-row"><strong>'+e.playerScore+' — '+e.botScore+'</strong><span>'+e.date+'</span></div>').join('') : '<div class="profile-empty">Nu există meciuri încă.</div>';
+    }
+    d.showModal();
+  }
+
+  function wireProfileDialog() {
+    wire('closeProfileBtn',()=>$('profileDialog')?.close());
+    wire('saveProfileBtn',()=>{
+      const v=($('profileNameInput')?.value||'').trim().replace(/\s+/g,' ').slice(0,18);
+      profile.name=v||'Jucător';
+      writeJSON('tabinet-profile',profile);
+      refreshMenu();
+      $('profileDialog')?.close();
+    });
+    wire('deleteAvatarBtn',()=>{});
+  }
+
+  async function boot() {
+    setLoading('Se încarcă masa…',25);
+    await sleep(160);
+    setLoading('Se pregătesc cărțile…',55);
+    await sleep(160);
+    setLoading('Se leagă regulile…',80);
+    await sleep(160);
+    setLoading('Gata.',100);
+    await sleep(180);
+    showScreen('menu');
+    wire('menuPlayBtn',()=>showScreen('mode'));
+    wire('modeBackBtn',()=>showScreen('menu'));
+    wire('botModeBtn',()=>showScreen('difficulty'));
+    wire('difficultyBackBtn',()=>showScreen('mode'));
+    setupDialogs();
+    setupSettings();
+    wireProfileDialog();
+    refreshMenu();
+  }
+
+  boot().catch(err=>{
+    console.error(err);
+    setLoading('Eroare la pornire. Reîncarcă pagina.',100);
   });
-}
 
-
-function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-
-function createDeck() {
-  let id = 0;
-  return SUITS.flatMap(suit => RANKS.map(rank => ({
-    id: id++, suit: suit.key, symbol: suit.symbol, red: suit.red, rank: rank.key, value: rank.value
-  })));
-}
-
-function shuffle(array) {
+})();

@@ -362,13 +362,15 @@
       showScreen('menu');
       return;
     }
-    const score=$('gameOverScore');
-    if(score) score.textContent=entry.playerScore+' — '+entry.botScore;
+    const playerFinal=$('finalPlayerScore');
+    const botFinal=$('finalBotScore');
+    if(playerFinal) playerFinal.textContent=entry.playerScore;
+    if(botFinal) botFinal.textContent=entry.botScore;
     const title=$('gameOverTitle');
     if(title) title.textContent=entry.result==='draw'?'Remiză':entry.result==='win'?'Ai câștigat':'Botul a câștigat';
     const copy=$('gameOverCopy');
     if(copy) copy.textContent='Partida s-a încheiat. Poți începe un meci nou din meniul principal.';
-    const again=$('newMatchBtn');
+    const again=$('gameOverRematchBtn');
     if(again) again.onclick=()=>{d.close(); startGame();};
     const menu=$('gameOverMenuBtn');
     if(menu) menu.onclick=()=>{d.close();showScreen('menu');};

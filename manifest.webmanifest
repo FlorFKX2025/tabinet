@@ -1,0 +1,10 @@
+{
+  "name": "Tabinet",
+  "short_name": "Tabinet",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#081c16",
+  "theme_color": "#0b3d2e",
+  "description": "Tabinet — joc de cărți românesc, direct în browser.",
+  "icons": [{"src":"./icons/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

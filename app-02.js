@@ -1,5 +1,1 @@
-) {
-  if (!audioContext) {
-  }
-  // chunk continuation is appended by loader
-}
+// Runtime chunk reserved for future updates. The playable build lives in app-01.js.

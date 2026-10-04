@@ -1,0 +1,64 @@
+name: Deploy exact Tabinet v0.7.6
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "build-v076-p*.b64"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rebuild exact v0.7.6 archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f build-v076.b64 build-v076.zip
+          for part in build-v076-p*.b64; do
+            cat "$part" >> build-v076.b64
+          done
+          base64 --decode build-v076.b64 > build-v076.zip
+          unzip -t build-v076.zip
+          rm -rf site
+          mkdir -p site
+          unzip -oq build-v076.zip -d site
+
+          test -f site/index.html
+          test -f site/styles.css
+          test -f site/app.js
+          test -f site/rules.js
+          test -f site/manifest.webmanifest
+
+          printf "Deployed archive: "
+          sha256sum build-v076.zip
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

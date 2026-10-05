@@ -1764,8 +1764,9 @@ if (document.body) {
   modalScrollObserver.observe(document.body, { subtree:true, attributes:true, attributeFilter:['open'] });
   document.addEventListener('wheel', preventBackgroundScroll, { passive:false });
   document.addEventListener('touchmove', preventBackgroundScroll, { passive:false });
-  document.addEventListener('wheel', preventMainMenuScroll, { passive:false });
-  document.addEventListener('touchmove', preventMainMenuScroll, { passive:false });
+  // Do not cancel touch gestures on the main menu.
+  // Mobile browsers need the natural touch stream so taps still synthesize
+  // click events and short screens can scroll the menu when necessary.
   syncModalScrollLock();
 }
 

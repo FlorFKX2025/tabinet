@@ -308,6 +308,7 @@ function openProfile() {
   renderProfile();
   const dialog = $('profileDialog');
   const input = $('profileNameInput');
+  const scroll = dialog.querySelector('.profile-dialog-scroll');
   const sentinel = dialog.querySelector('.dialog-focus-sentinel');
   if (input) {
     input.readOnly = true;
@@ -317,6 +318,7 @@ function openProfile() {
   dialog.showModal();
   const resetDialogPosition = () => {
     dialog.scrollTop = 0;
+    if (scroll) scroll.scrollTop = 0;
     sentinel?.focus({ preventScroll: true });
   };
   resetDialogPosition();

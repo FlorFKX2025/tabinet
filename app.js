@@ -203,7 +203,18 @@ function loadProfile() {
 }
 
 function saveProfile() {
-  try { localStorage.setItem('tabinet-profile', JSON.stringify(profile)); } catch {}
+  try {
+    const payload = {
+      version: 1,
+      name: String(profile.name || 'Jucător').slice(0,18),
+      id: String(profile.id || makeDefaultProfileId()),
+      avatar: profile.avatar || { kind:'template', id:'01' }
+    };
+    localStorage.setItem('tabinet-profile', JSON.stringify(payload));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getAvatarTemplate(id) { return AVATAR_TEMPLATES.find(item => item.id === id) || AVATAR_TEMPLATES[0]; }
@@ -1737,10 +1748,14 @@ $('profileNameInput').addEventListener('keydown', event => {
 });
 $('saveProfileBtn').addEventListener('click', () => {
   profile.name = currentProfileName();
-  saveProfile();
+  const saved = saveProfile();
   renderProfile();
-  $('profileDialog').close();
-  playTone('success');
+  if (saved) {
+    $('profileDialog').close();
+    playTone('success');
+  } else {
+    playTone('click');
+  }
 });
 $('copyProfileIdBtn').addEventListener('click', async () => {
   try { await navigator.clipboard?.writeText(profile.id); } catch {}

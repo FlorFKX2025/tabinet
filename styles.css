@@ -2006,6 +2006,18 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   }
 }
 
+@media (max-width: 600px) {
+  .profile-field input[type="text"] {
+    font-size: 16px !important;
+    line-height: 1.25;
+    min-height: 44px;
+  }
+
+  .profile-field input[type="text"][readonly] {
+    cursor: pointer;
+  }
+}
+
 @media (max-width: 430px) {
   #menuScreen .menu-header h2 {
     max-width: 100%;

@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "build-v076-p*.b64"
+      - ".transfer-v076/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -28,28 +28,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rebuild exact v0.7.6 archive
+      - name: Rebuild and verify exact v0.7.6 archive
         shell: bash
         run: |
           set -euo pipefail
-          rm -f build-v076.b64 build-v076.zip
-          for part in build-v076-p*.b64; do
-            cat "$part" >> build-v076.b64
+          rm -f v076-dist.b64 v076-dist.gz v076-dist.zip
+          for part in .transfer-v076/part-*.b64; do
+            cat "$part" >> v076-dist.b64
           done
-          base64 --decode build-v076.b64 > build-v076.zip
-          unzip -t build-v076.zip
+
+          expected_b64_len=63288
+          actual_b64_len=$(wc -c < v076-dist.b64)
+          test "$actual_b64_len" -eq "$expected_b64_len"
+
+          base64 --decode v076-dist.b64 > v076-dist.gz
+          gzip -t v076-dist.gz
+          gzip -dc v076-dist.gz > v076-dist.zip
+
+          printf '9842e540ce877391332c8a66af3e1442038be768d8b3ed8b15a27cd2bc490629  v076-dist.zip\n' | sha256sum -c -
+          unzip -t v076-dist.zip
+
           rm -rf site
           mkdir -p site
-          unzip -oq build-v076.zip -d site
+          unzip -oq v076-dist.zip -d site
 
           test -f site/index.html
           test -f site/styles.css
           test -f site/app.js
           test -f site/rules.js
           test -f site/manifest.webmanifest
+          test -f site/sw.js
+          test -f site/icons/icon.svg
 
-          printf "Deployed archive: "
-          sha256sum build-v076.zip
+          grep -q './styles.css' site/index.html
+
+          grep -q './app.js' site/index.html
+
+          # Force a service-worker source update on Pages so browsers drop the old hosted cache.
+          sed -i 's/tabinet-v0.7.6/tabinet-v0.7.6-pages-sync-1/' site/sw.js
+
+          printf 'Verified exact v0.7.6 ZIP: '
+          sha256sum v076-dist.zip
+          printf 'Published files:\n'
+          find site -maxdepth 2 -type f -printf '%P %s bytes\n' | sort
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5

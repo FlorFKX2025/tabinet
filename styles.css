@@ -975,3 +975,956 @@ body.menu-screen-locked #resumeMatchBar {
   position: fixed;
 }
 body.menu-screen-locked { padding-bottom: 0 !important; }
+
+
+/* v0.7.6 mobile responsiveness pass
+   Keeps the desktop composition intact while making the menu, match table,
+   dialogs and touch targets comfortable on narrow phones and short screens. */
+
+@media (max-width: 860px) {
+  :root {
+    --mobile-gutter: max(12px, env(safe-area-inset-left));
+    --mobile-gutter-right: max(12px, env(safe-area-inset-right));
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  .app {
+    width: 100%;
+    min-height: 100dvh;
+    padding-left: var(--mobile-gutter);
+    padding-right: var(--mobile-gutter-right);
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+  }
+
+  .screen {
+    min-height: calc(100dvh - 42px);
+  }
+
+  .icon-button,
+  .back-button,
+  .primary,
+  .secondary,
+  .toggle-btn,
+  .menu-action,
+  .big-choice,
+  .difficulty-card,
+  .capture-option,
+  .tableau-option,
+  .avatar-template-choice,
+  .avatar-upload-card,
+  .profile-menu-button {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .menu-header {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    grid-template-areas:
+      "title title"
+      "profile install";
+    align-items: center;
+    gap: 10px;
+    padding-top: 8px;
+  }
+
+  .menu-header > div {
+    grid-area: title;
+    width: 100%;
+  }
+
+  .menu-header > .icon-button {
+    grid-area: install;
+    order: initial;
+    justify-self: end;
+  }
+
+  .profile-menu-button {
+    grid-area: profile;
+    order: initial;
+    min-width: 0;
+    width: auto;
+    max-width: min(100%, 250px);
+    margin-left: 0;
+    min-height: 48px;
+    padding: 6px 10px 6px 6px;
+  }
+
+  .profile-avatar-mini {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+    border-radius: 10px;
+  }
+
+  .menu-header h2 {
+    margin-bottom: 6px;
+    font-size: clamp(2rem, 9vw, 2.65rem);
+    line-height: .95;
+  }
+
+  .menu-subtitle {
+    font-size: .88rem;
+    line-height: 1.35;
+    max-width: 34rem;
+  }
+
+  .menu-layout {
+    margin-top: 16px;
+    gap: 12px;
+  }
+
+  .menu-hero-card {
+    min-height: 0;
+    padding: 18px;
+    border-radius: 22px;
+    gap: 12px;
+  }
+
+  .hero-cards {
+    width: 250px;
+    height: 150px;
+    margin: -4px auto -12px;
+    transform: scale(.72);
+    transform-origin: center top;
+  }
+
+  .menu-copy {
+    max-width: none;
+  }
+
+  .menu-copy h3 {
+    margin-top: 10px;
+    font-size: clamp(1.35rem, 6vw, 1.9rem);
+    line-height: 1.04;
+  }
+
+  .menu-copy p {
+    font-size: .88rem;
+    line-height: 1.45;
+  }
+
+  .menu-play-button {
+    width: 100%;
+    margin-top: 8px;
+    min-height: 48px;
+  }
+
+  .menu-actions {
+    gap: 9px;
+  }
+
+  .menu-action {
+    min-height: 76px;
+    padding: 13px 14px;
+    border-radius: 17px;
+    grid-template-columns: 42px minmax(0,1fr) auto;
+    gap: 10px;
+  }
+
+  .menu-action-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+  }
+
+  .menu-action strong {
+    font-size: .92rem;
+  }
+
+  .menu-action small {
+    font-size: .71rem;
+  }
+
+  .menu-footer {
+    padding-top: 12px;
+    padding-bottom: 6px;
+    flex-wrap: wrap;
+    font-size: .62rem;
+  }
+
+  .menu-footer span:last-child {
+    margin-left: auto;
+  }
+
+  .screen-heading {
+    margin: 24px auto 18px;
+    padding-inline: 2px;
+  }
+
+  .screen-heading h2 {
+    font-size: clamp(1.8rem, 8vw, 2.55rem);
+  }
+
+  .back-button {
+    min-height: 44px;
+    padding-inline: 12px;
+    margin-top: 4px;
+  }
+
+  .choice-grid {
+    gap: 12px;
+  }
+
+  .big-choice {
+    min-height: 230px;
+    padding: 20px;
+    border-radius: 21px;
+  }
+
+  .choice-art {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+  }
+
+  .big-choice-title {
+    font-size: 1.3rem;
+  }
+
+  .difficulty-grid {
+    gap: 10px;
+  }
+
+  .difficulty-card {
+    min-height: 155px;
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .difficulty-icon {
+    min-width: 62px;
+    min-height: 38px;
+  }
+
+  .difficulty-name {
+    margin-top: 28px;
+    font-size: 1.3rem;
+  }
+
+  .difficulty-copy {
+    font-size: .78rem;
+  }
+
+  .game-topbar {
+    flex-wrap: wrap;
+    padding-top: 2px;
+  }
+
+  .game-title-wrap,
+  .game-top-actions {
+    min-width: 0;
+  }
+
+  .game-title-wrap {
+    flex: 1 1 52%;
+  }
+
+  .game-top-actions {
+    flex: 0 0 auto;
+  }
+
+  .game-title-wrap h2 {
+    font-size: 1.02rem;
+  }
+
+  .deck-counter {
+    min-width: 86px;
+    padding: 7px 9px;
+  }
+
+  .game-top-actions .icon-button,
+  .game-title-wrap .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .match-shell {
+    margin-top: 11px;
+  }
+
+  .match-layout {
+    gap: 8px;
+  }
+
+  .player-rail,
+  .opponent-rail {
+    border-radius: 17px;
+    padding: 8px 10px;
+    background:linear-gradient(160deg,rgba(255,255,255,.055),rgba(255,255,255,.022));
+  }
+
+  .player-rail .score-pile,
+  .opponent-rail .score-pile {
+    width: 54px;
+    height: 58px;
+  }
+
+  .player-rail .score-pile-card,
+  .opponent-rail .score-pile-card {
+    width: 38px;
+    height: 54px;
+    left: 7px;
+  }
+
+  .player-rail .tableau-mini-box,
+  .opponent-rail .tableau-mini-box {
+    flex-basis: 112px;
+  }
+
+  .side-rail-label {
+    font-size: .57rem;
+  }
+
+  .side-rail-caption {
+    font-size: .49rem;
+  }
+
+  .tableau-mini-box {
+    margin-top: 0;
+    padding: 8px 7px 7px;
+  }
+
+  .tableau-mini-head {
+    margin-bottom: 5px;
+  }
+
+  .tableau-pile {
+    height: 76px;
+    min-height: 76px;
+  }
+
+  .tableau-pile-card {
+    width: 40px;
+    height: 55px;
+    padding: 4px 5px;
+  }
+
+  .tableau-pile-card .rank {
+    font-size: .72rem;
+  }
+
+  .tableau-pile-card .suit {
+    font-size: .68rem;
+  }
+
+  .match-core {
+    width: 100%;
+  }
+
+  .score-row {
+    gap: 7px;
+  }
+
+  .player-chip {
+    min-height: 48px;
+    padding: 7px 8px;
+    border-radius: 13px;
+    gap: 7px;
+  }
+
+  .player-chip strong {
+    font-size: .78rem;
+  }
+
+  .player-chip small {
+    font-size: .58rem;
+  }
+
+  .avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+  }
+
+  .score-value {
+    font-size: 1.32rem;
+  }
+
+  .turn-banner {
+    padding: 9px 0;
+    font-size: .8rem;
+  }
+
+  .table-zone {
+    min-height: 252px;
+    border-radius: 22px;
+  }
+
+  .table-zone-top {
+    padding: 11px 12px;
+  }
+
+  .table-label {
+    font-size: .57rem;
+  }
+
+  .table-count {
+    font-size: .62rem;
+  }
+
+  .table-cards {
+    min-height: 195px;
+    gap: 6px;
+    padding: 5px 10px 18px;
+  }
+
+  .table-stack {
+    width: 60px;
+  }
+
+  .card {
+    width: 56px;
+    height: 81px;
+    border-radius: 10px;
+  }
+
+  .card .rank {
+    top: 6px;
+    left: 7px;
+    font-size: .83rem;
+  }
+
+  .card .center {
+    font-size: 1.58rem;
+  }
+
+  .card .suit {
+    bottom: 5px;
+    right: 7px;
+    font-size: 1rem;
+  }
+
+  .card.highlight {
+    box-shadow: 0 0 0 4px rgba(233,199,111,.13), 0 12px 22px rgba(0,0,0,.30);
+  }
+
+  .bot-hand-area {
+    padding: 10px 0 7px;
+  }
+
+  .bot-hand {
+    min-height: 55px;
+  }
+
+  .card-back {
+    width: 37px;
+    height: 55px;
+    margin-left: -6px;
+    border-radius: 8px;
+  }
+
+  .card-back::before {
+    inset: 4px;
+  }
+
+  .card-back::after {
+    font-size: .8rem;
+  }
+
+  .player-area {
+    margin-top: 3px;
+    padding: 10px 8px 9px;
+    border-radius: 17px;
+  }
+
+  .player-area-header {
+    padding: 0 2px 7px;
+    gap: 8px;
+  }
+
+  .section-heading span,
+  .section-label {
+    font-size: .55rem;
+  }
+
+  .player-area-header small,
+  .last-action {
+    font-size: .59rem;
+  }
+
+  .player-hand {
+    min-height: 98px;
+    gap: 5px;
+  }
+
+  .player-hand .card {
+    width: 54px;
+    height: 78px;
+  }
+
+  .player-hand .card:active {
+    transform: translateY(-7px) scale(1.015);
+  }
+
+  .game-bottom-bar {
+    gap: 8px;
+    padding-top: 8px;
+  }
+
+  .score-help {
+    font-size: .62rem;
+  }
+
+  .small-btn {
+    min-height: 42px;
+  }
+
+  .side-rail .battle-log-panel {
+    margin-left: 5px;
+    padding-left: 7px;
+  }
+}
+
+@media (max-width: 600px) {
+  .app {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+
+  /* On small phones the menu itself may scroll, while the document remains locked.
+     This prevents cut-off buttons on short screens such as iPhone SE. */
+  body.menu-screen-locked {
+    touch-action: pan-y !important;
+  }
+
+  body.menu-screen-locked #menuScreen {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
+  }
+
+  body.menu-screen-locked #menuScreen::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  .menu-header {
+    gap: 8px;
+  }
+
+  .menu-header h2 {
+    font-size: clamp(1.82rem, 9.2vw, 2.3rem);
+  }
+
+  .profile-menu-button {
+    max-width: 220px;
+  }
+
+  .menu-layout {
+    margin-top: 12px;
+  }
+
+  .menu-hero-card {
+    padding: 15px;
+  }
+
+  .hero-cards {
+    transform: scale(.62);
+    margin-bottom: -28px;
+  }
+
+  .menu-copy h3 {
+    font-size: 1.32rem;
+  }
+
+  .menu-copy p {
+    font-size: .82rem;
+  }
+
+  .menu-action {
+    min-height: 70px;
+    border-radius: 15px;
+  }
+
+  .menu-footer {
+    display: grid;
+    gap: 4px;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .menu-footer span:last-child {
+    margin-left: 0;
+  }
+
+  .choice-dialog,
+  .gameover-dialog,
+  .settings-dialog,
+  .rules-dialog,
+  .history-dialog,
+  .profile-dialog {
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+  }
+
+  dialog {
+    max-width: calc(100vw - 16px);
+  }
+
+  /* Mobile dialogs need an internal scroll area; the page behind them remains locked. */
+  .choice-dialog,
+  .rules-dialog,
+  .history-dialog,
+  .profile-dialog {
+    max-height: calc(100dvh - 20px) !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain !important;
+    touch-action: pan-y;
+  }
+
+  .choice-list,
+  .tableau-options,
+  .history-entries,
+  .history-details ol,
+  .profile-recent-list,
+  .battle-log-list {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+
+  .choice-list {
+    max-height: 42dvh;
+  }
+
+  .rules-grid {
+    gap: 9px;
+  }
+
+  .rule-card {
+    padding: 12px;
+    border-radius: 15px;
+  }
+
+  .rule-demo {
+    min-height: 70px;
+  }
+
+  .capture-dialog {
+    bottom: max(7px, env(safe-area-inset-bottom));
+    width: calc(100vw - 12px);
+    max-width: calc(100vw - 12px);
+    max-height: 70dvh;
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .capture-dialog .choice-list {
+    max-height: 36dvh;
+  }
+
+  .capture-option {
+    min-height: 48px;
+    padding: 11px 12px;
+  }
+
+  .capture-option-sub {
+    font-size: .68rem;
+  }
+
+  .dialog-actions {
+    flex-wrap: wrap;
+  }
+
+  .dialog-actions .primary,
+  .dialog-actions .secondary {
+    flex: 1 1 140px;
+    min-height: 44px;
+  }
+
+  .setting-row {
+    gap: 12px;
+  }
+
+  .language-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .sound-setting-row {
+    align-items: stretch;
+  }
+
+  .sound-controls {
+    width: 100%;
+  }
+
+  .volume-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .profile-hero {
+    align-items: flex-start;
+  }
+
+  .profile-avatar-large {
+    width: 64px;
+    height: 64px;
+    flex-basis: 64px;
+    border-radius: 18px;
+  }
+
+  .avatar-template-grid {
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    gap: 7px;
+  }
+
+  .avatar-template-choice .avatar-template-art {
+    height: 60px;
+  }
+
+  .profile-stats-grid {
+    grid-template-columns: repeat(3, minmax(0,1fr));
+  }
+
+  .profile-stat-card {
+    min-height: 74px;
+    padding: 9px;
+  }
+
+  .profile-stat-card strong {
+    font-size: 1.2rem;
+  }
+
+  .resume-match-bar {
+    width: calc(100vw - 12px);
+    padding: 10px;
+    border-radius: 16px;
+    bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  .resume-match-actions {
+    display: grid;
+    grid-template-columns: 48px 1fr 1fr;
+    width: 100%;
+  }
+
+  .resume-match-actions .primary,
+  .resume-match-actions .secondary {
+    min-height: 44px;
+  }
+
+  .resume-match-timer {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+@media (max-width: 430px) {
+  .screen-heading {
+    margin-top: 20px;
+  }
+
+  .menu-header h2 {
+    font-size: 1.9rem;
+  }
+
+  .profile-menu-button {
+    max-width: 190px;
+  }
+
+  .profile-menu-copy strong {
+    font-size: .75rem;
+  }
+
+  .profile-menu-copy small {
+    font-size: .52rem;
+  }
+
+  .menu-action {
+    grid-template-columns: 38px minmax(0,1fr) auto;
+    min-height: 66px;
+    padding: 11px;
+  }
+
+  .menu-action-icon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .table-zone {
+    min-height: 238px;
+  }
+
+  .table-cards {
+    min-height: 182px;
+    padding-inline: 6px;
+  }
+
+  .table-stack {
+    width: 53px;
+  }
+
+  .card {
+    width: 50px;
+    height: 73px;
+    border-radius: 9px;
+  }
+
+  .card .rank {
+    top: 5px;
+    left: 6px;
+    font-size: .76rem;
+  }
+
+  .card .center {
+    font-size: 1.42rem;
+  }
+
+  .card .suit {
+    bottom: 5px;
+    right: 6px;
+    font-size: .9rem;
+  }
+
+  .player-hand {
+    gap: 4px;
+  }
+
+  .player-hand .card {
+    width: 50px;
+    height: 73px;
+  }
+
+  .score-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .player-chip {
+    padding-inline: 6px;
+  }
+
+  .player-chip .score-value {
+    margin-left: auto;
+  }
+
+  .player-chip-bot .score-value {
+    margin-right: auto;
+  }
+
+  .deck-counter small {
+    font-size: .52rem;
+  }
+
+  .deck-counter strong {
+    font-size: .92rem;
+  }
+
+  .bot-hand {
+    min-height: 50px;
+  }
+
+  .card-back {
+    width: 34px;
+    height: 50px;
+  }
+
+  .player-area {
+    padding-inline: 6px;
+  }
+
+  .player-area-header {
+    padding-inline: 1px;
+  }
+
+  .last-action {
+    max-width: 52%;
+    line-height: 1.25;
+  }
+
+  .game-bottom-bar {
+    padding-bottom: max(2px, env(safe-area-inset-bottom));
+  }
+
+  .small-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .profile-stats-grid {
+    gap: 6px;
+  }
+
+  .profile-stat-card span {
+    font-size: .55rem;
+  }
+
+  .profile-stat-card strong {
+    font-size: 1.08rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .app {
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+
+  .menu-header {
+    grid-template-areas:
+      "title profile"
+      "title install";
+    grid-template-columns: minmax(0,1fr) auto;
+  }
+
+  .menu-header > div {
+    grid-area: title;
+    align-self: center;
+  }
+
+  .menu-layout {
+    grid-template-columns: minmax(0,1.2fr) minmax(220px,.8fr);
+  }
+
+  .menu-hero-card {
+    min-height: 290px;
+    padding: 14px;
+  }
+
+  .hero-cards {
+    transform: scale(.55);
+    transform-origin: center top;
+    margin-bottom: -48px;
+  }
+
+  .menu-action {
+    min-height: 62px;
+  }
+
+  .match-layout {
+    gap: 6px;
+  }
+
+  .table-zone {
+    min-height: 190px;
+  }
+
+  .table-cards {
+    min-height: 136px;
+  }
+
+  .player-hand {
+    min-height: 76px;
+  }
+
+  .opponent-rail .battle-log-panel {
+    display: none;
+  }
+}

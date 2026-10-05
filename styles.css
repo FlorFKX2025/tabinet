@@ -2079,8 +2079,10 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
 }
 
 .profile-dialog-scroll {
+  flex: 1 1 0 !important;
   min-height: 0 !important;
-  max-height: calc(90vh - 34px) !important;
+  height: 0 !important;
+  max-height: none !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior: contain !important;
@@ -2100,7 +2102,8 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   }
 
   .profile-dialog-scroll {
-    max-height: calc(100dvh - 54px) !important;
+    height: 0 !important;
+    max-height: none !important;
     touch-action: pan-y;
   }
 }

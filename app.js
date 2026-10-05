@@ -297,24 +297,35 @@ function openProfile() {
   renderProfile();
   const dialog = $('profileDialog');
   const input = $('profileNameInput');
+  const sentinel = dialog.querySelector('.dialog-focus-sentinel');
   if (input) {
     input.readOnly = true;
+    input.tabIndex = -1;
     input.setAttribute('aria-readonly', 'true');
   }
   dialog.showModal();
-  requestAnimationFrame(() => {
+  const resetDialogPosition = () => {
     dialog.scrollTop = 0;
-    dialog.focus({ preventScroll: true });
+    sentinel?.focus({ preventScroll: true });
+  };
+  resetDialogPosition();
+  requestAnimationFrame(() => {
+    resetDialogPosition();
+    requestAnimationFrame(() => { dialog.scrollTop = 0; });
   });
 }
 
 function openRules() {
   const dialog = $('rulesDialog');
+  const sentinel = dialog.querySelector('.dialog-focus-sentinel');
   dialog.showModal();
-  dialog.scrollTop = 0;
-  requestAnimationFrame(() => {
+  const resetDialogPosition = () => {
     dialog.scrollTop = 0;
-    dialog.focus({ preventScroll: true });
+    sentinel?.focus({ preventScroll: true });
+  };
+  resetDialogPosition();
+  requestAnimationFrame(() => {
+    resetDialogPosition();
     requestAnimationFrame(() => { dialog.scrollTop = 0; });
   });
 }
@@ -1703,17 +1714,20 @@ $('soundVolume').addEventListener('change', () => playTone('success'));
 $('animationToggle').addEventListener('click', () => { settings.animations = !settings.animations; if (!settings.animations) { state.animating = false; } saveSettings(); updateSettingsUI(); playTone('button'); });
 $('profileMenuBtn').addEventListener('click', () => { playTone('button'); openProfile(); });
 $('closeProfileBtn').addEventListener('click', () => { playTone('button'); $('profileDialog').close(); });
-$('profileNameInput').addEventListener('click', () => {
+$('profileNameInput').addEventListener('pointerdown', event => {
   const input = $('profileNameInput');
   if (!input || !input.readOnly) return;
+  event.preventDefault();
   input.readOnly = false;
+  input.tabIndex = 0;
   input.setAttribute('aria-readonly', 'false');
-  requestAnimationFrame(() => input.focus({ preventScroll: true }));
+  input.focus({ preventScroll: true });
 });
 $('profileNameInput').addEventListener('blur', () => {
   const input = $('profileNameInput');
   if (!input) return;
   input.readOnly = true;
+  input.tabIndex = -1;
   input.setAttribute('aria-readonly', 'true');
 });
 $('profileNameInput').addEventListener('keydown', event => {

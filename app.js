@@ -293,7 +293,31 @@ function renderProfile() {
   document.querySelectorAll('.avatar-template-choice').forEach(btn => btn.classList.toggle('selected', profile.avatar?.kind === 'template' && profile.avatar?.id === btn.dataset.avatarId));
 }
 
-function openProfile() { renderProfile(); $('profileDialog').showModal(); }
+function openProfile() {
+  renderProfile();
+  const dialog = $('profileDialog');
+  const input = $('profileNameInput');
+  if (input) {
+    input.readOnly = true;
+    input.setAttribute('aria-readonly', 'true');
+  }
+  dialog.showModal();
+  requestAnimationFrame(() => {
+    dialog.scrollTop = 0;
+    dialog.focus({ preventScroll: true });
+  });
+}
+
+function openRules() {
+  const dialog = $('rulesDialog');
+  dialog.showModal();
+  dialog.scrollTop = 0;
+  requestAnimationFrame(() => {
+    dialog.scrollTop = 0;
+    dialog.focus({ preventScroll: true });
+    requestAnimationFrame(() => { dialog.scrollTop = 0; });
+  });
+}
 
 function currentProfileName() {
   const value = ($('profileNameInput')?.value || '').trim().replace(/\s+/g,' ');
@@ -1679,6 +1703,24 @@ $('soundVolume').addEventListener('change', () => playTone('success'));
 $('animationToggle').addEventListener('click', () => { settings.animations = !settings.animations; if (!settings.animations) { state.animating = false; } saveSettings(); updateSettingsUI(); playTone('button'); });
 $('profileMenuBtn').addEventListener('click', () => { playTone('button'); openProfile(); });
 $('closeProfileBtn').addEventListener('click', () => { playTone('button'); $('profileDialog').close(); });
+$('profileNameInput').addEventListener('click', () => {
+  const input = $('profileNameInput');
+  if (!input || !input.readOnly) return;
+  input.readOnly = false;
+  input.setAttribute('aria-readonly', 'false');
+  requestAnimationFrame(() => input.focus({ preventScroll: true }));
+});
+$('profileNameInput').addEventListener('blur', () => {
+  const input = $('profileNameInput');
+  if (!input) return;
+  input.readOnly = true;
+  input.setAttribute('aria-readonly', 'true');
+});
+$('profileNameInput').addEventListener('keydown', event => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  $('profileNameInput').blur();
+});
 $('saveProfileBtn').addEventListener('click', () => {
   profile.name = currentProfileName();
   saveProfile();
@@ -1706,7 +1748,7 @@ $('profileImageInput').addEventListener('change', event => {
   };
   reader.readAsDataURL(file);
 });
-$('rulesMenuBtn').addEventListener('click', () => { playTone('button'); $('rulesDialog').showModal(); });
+$('rulesMenuBtn').addEventListener('click', () => { playTone('button'); openRules(); });
 $('closeRulesBtn').addEventListener('click', () => { playTone('button'); $('rulesDialog').close(); });
 $('gameMenuBtn').addEventListener('click', () => { playTone('button'); pauseCurrentMatch(); });
 $('restartMatchBtn').addEventListener('click', () => { playTone('button'); void startMatch(state.difficulty); });

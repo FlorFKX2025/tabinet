@@ -1,0 +1,36 @@
+name: Reconstruct candidate self-host assets
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check candidate payload sets
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_set () {
+            local name="$1"; shift
+            local out="candidate-$name.gz"
+            : > "$out"
+            for part in "$@"; do cat "$part" >> "$out"; done
+            base64 --decode "$out" > "$out.bin"
+            echo "=== $name ==="
+            gzip -t "$out.bin" || { echo "gzip test failed"; return 0; }
+            gzip -dc "$out.bin" > "$out.dec"
+            wc -c "$out.dec"
+            sha256sum "$out.dec"
+            head -c 160 "$out.dec" | tr '\0' ' ' | cat
+            echo
+            file "$out.dec" || true
+          }
+          check_set app-p app-p1.b64 app-p2.b64 app-p3.b64 app-p4.b64 app-p5.b64 app-p6.b64
+          check_set a15 a15-01.b64 a15-02.b64 a15-03.b64 a15-04.b64 a15-05.b64 a15-06.b64

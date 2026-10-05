@@ -1754,7 +1754,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=076-mobile3').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

@@ -7,7 +7,7 @@
   <meta name="description" content="Tabinet — joc de cărți românesc, direct în browser.">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
-  
+  <link rel="stylesheet" href="./styles.css">
   <title>Tabinet • v0.7.6</title>
 </head>
 <body>
@@ -201,23 +201,59 @@
             <div><strong>Bot</strong><small id="botMeta">Ușor</small></div>
             <div class="avatar bot-avatar">BOT</div>
           </div>
-       </div>
-            <div class="table-zone" id="tableZone">
-              <div class="table-hint" id="tableHint">Așteaptă o carte.</div>
-              <div class="table-stacks" id="tableStacks"></div>
+        </div>
+
+        <div class="turn-banner" id="turnBanner">Este rândul tău</div>
+
+        <div class="table-zone" id="tableZone">
+          <div class="table-zone-top">
+            <span class="table-label" id="tableLabel">MASĂ</span>
+            <span class="table-count" id="tableCount">0 cărți</span>
+          </div>
+          <div class="table-cards" id="tableCards" aria-label="Cărți pe masă"></div>
+          <div class="table-empty" id="tableEmpty">Masa este goală.</div>
+        </div>
+
+        <div class="bot-hand-area">
+          <div class="section-heading compact-heading">
+            <span id="opponentLabel">ADVERSAR</span>
+            <small id="botCardCount">6 cărți în mână</small>
+          </div>
+          <div class="bot-hand" id="opponentHand" aria-label="Cărțile ascunse ale adversarului"></div>
+        </div>
+
+        <div class="player-area">
+          <div class="player-area-header">
+            <div>
+              <span class="section-label" id="playerHandLabel">MÂNA TA</span>
+              <small id="handHint">Alege o carte.</small>
             </div>
-            <div class="hand-zone opponent-hand" id="opponentHand" aria-label="Mâna adversarului"></div>
-            <div class="hand-zone player-hand" id="playerHand" aria-label="Mâna ta"></div>
-            <div class="action-hint" id="actionHint">Alege o carte.</div>
+            <span class="last-action" id="gameLog">Partidă nouă.</span>
+          </div>
+          <div class="player-hand" id="playerHand" aria-label="Mâna ta"></div>
+        </div>
+
+            <div class="game-bottom-bar">
+              <div class="score-help" id="scoreHelp">Puncte: capturi speciale + tablă.</div>
+              <button class="secondary small-btn" id="restartMatchBtn" type="button">Joc nou</button>
+            </div>
           </div>
 
-          <aside class="side-rail opponent-rail" aria-label="Punctele și tablele adversarului">
+          <aside class="side-rail opponent-rail" aria-label="Punctele, tablele botului și istoricul meciurilor">
             <div class="side-rail-label" id="opponentRailLabel">BOT</div>
             <div class="score-pile" id="opponentScorePile" aria-hidden="true"></div>
-            <small class="side-rail-caption" id="opponentScorePileCaption">teanc de puncte</small>
+            <small class="side-rail-caption">teanc de puncte</small>
             <div class="tableau-mini-box">
               <div class="tableau-mini-head"><span id="opponentTableauLabel">TABLELE</span><small id="opponentTableauActive">0 active</small></div>
-              <div class="tableau-pile" id="opponentTableauPile" aria-label="Tablele adversarului active"></div>
+              <div class="tableau-pile" id="opponentTableauPile" aria-label="Tablele active ale adversarului"></div>
+            </div>
+
+            <div class="battle-log-panel">
+              <div class="battle-log-head">
+                <span id="battleLogTitle">BATTLE LOG</span>
+                <small id="recentMatches">ultimele meciuri</small>
+              </div>
+              <div id="battleLogList" class="battle-log-list"></div>
             </div>
           </aside>
         </div>
@@ -225,23 +261,39 @@
     </section>
   </main>
 
-  <!-- Capture chooser -->
-  <dialog id="captureDialog" class="choice-dialog capture-dialog">
+  <!-- Shuffle overlay -->
+  <section id="shuffleOverlay" class="overlay hidden" aria-label="Se amestecă pachetul">
+    <div class="shuffle-dialog">
+      <div class="shuffle-deck" aria-hidden="true">
+        <div class="shuffle-card shuffle-card-a"></div>
+        <div class="shuffle-card shuffle-card-b"></div>
+        <div class="shuffle-card shuffle-card-c"></div>
+      </div>
+      <p class="eyebrow">PREGĂTEȘTE-TE</p>
+      <h2 id="shuffleTitle">Se amestecă pachetul</h2>
+      <p>Se distribuie cărțile și începe partida.</p>
+      <div class="loading-bar"><span id="shuffleProgress"></span></div>
+    </div>
+  </section>
+
+  <!-- Capture dialog -->
+  <dialog id="captureDialog" class="choice-dialog">
     <div class="dialog-kicker" id="captureKicker">CAPTURĂ</div>
-    <h2 id="captureTitle">Alege cum vrei să iei.</h2>
-    <p id="captureCopy" class="dialog-copy">Poți lua una sau mai multe combinații compatibile.</p>
-    <div id="captureOptions" class="capture-options"></div>
+    <h2 id="captureTitle">Ai mai multe variante</h2>
+    <p id="captureTarget" class="dialog-copy"></p>
+    <div id="captureOptions" class="choice-list"></div>
+    <div id="captureSelectionSummary" class="selection-summary"></div>
     <div class="dialog-actions">
       <button class="secondary" id="cancelCaptureBtn" type="button">Anulează</button>
-      <button class="primary" id="captureConfirmBtn" type="button">Ia cărțile</button>
+      <button class="primary" id="captureConfirmBtn" type="button" disabled>Ia cărțile</button>
     </div>
   </dialog>
 
-  <!-- Table marker chooser -->
+  <!-- Tableau dialog -->
   <dialog id="tableauDialog" class="choice-dialog">
-    <div class="dialog-kicker" id="tableauKicker">TABLĂ</div>
+    <div class="dialog-kicker" id="tableauKicker">TABLĂ!</div>
     <h2 id="tableauTitle">Alege cartea pentru tablă</h2>
-    <p id="tableauCopy" class="dialog-copy">Alege o carte din captura de pe masă ca marcaj pentru această tablă.</p>
+    <p class="dialog-copy">Ai golit masa. Alege una dintre cărțile capturate de pe masă ca marcaj pentru această tablă.</p>
     <div id="tableauOptions" class="tableau-options"></div>
   </dialog>
 
@@ -405,6 +457,6 @@
   </dialog>
 
   <script src="./rules.js" defer></script>
-  <script src="./loader.js" defer></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>

@@ -40,6 +40,9 @@
     return [...unique.values()].sort((a, b) => b.length - a.length || a.map(c => c.id).join(',').localeCompare(b.map(c => c.id).join(',')));
   }
 
+  // Any stack containing 2 or more cards is a locked pile: it can only be
+  // captured by one card of the same rank/value and never contributes its
+  // cards as a sum for other captures. A single-card pile stays a normal card.
   function isLockedStack(stack) { return (stack.cards || []).length >= 2; }
 
   function stackValueOptions(stack) {
@@ -50,6 +53,9 @@
 
   function allCaptureGroupsForStacks(card, stacks) {
     const unique = new Map();
+
+    // Every stack with 2+ cards is captured as a whole, only by the same rank.
+    // This prevents a 3+3+3 pile from being treated as 9 or helping a 9 capture.
     for (const stack of stacks) {
       const cards = stack.cards || [];
       if (!cards.length) continue;
@@ -63,6 +69,9 @@
         unique.set(group.map(c => c.id).sort((a, b) => a - b).join('-'), group);
       }
     }
+
+    // Only singleton piles can participate in sum captures. Every 2+ card locked
+    // stacks are deliberately excluded from this search.
     const singles = stacks.filter(stack => (stack.cards || []).length === 1);
     function dfs(start, target, total, selectedStacks) {
       if (total === target && selectedStacks.length) {
@@ -73,16 +82,20 @@
       if (total >= target) return;
       for (let i = start; i < singles.length; i += 1) {
         for (const stackValue of stackValueOptions(singles[i])) {
-          const next = total + stackValue;
-          if (next > target) continue;
-          dfs(i + 1, target, next, [...selectedStacks, singles[i]]);
+          for (const targetTotal of [target]) {
+            const next = total + stackValue;
+            if (next > targetTotal) continue;
+            dfs(i + 1, targetTotal, next, [...selectedStacks, singles[i]]);
+          }
         }
       }
     }
+
     for (const target of targetValues(card)) dfs(0, target, 0, []);
     return [...unique.values()].sort((a, b) => b.length - a.length || a.map(c => c.id).join(',').localeCompare(b.map(c => c.id).join(',')));
   }
 
+  // Returns all non-overlapping combinations that can be taken by one played card.
   function findCaptureSelections(groups) {
     const selections = [];
     function walk(start, selectedGroups, usedIds) {
@@ -105,6 +118,9 @@
     return [...byId.values()];
   }
 
+  // Points belong to cards actually captured from the table, not to the card
+  // that was played from the hand. This matches the examples for A/J/Q/K/10
+  // and the stacked-A rule (three Aces captured by a fourth Ace = 3 points).
   function specialPoints(card) {
     if (card.rank === '2' && card.suit === 'clubs') return 1;
     if (['10', 'J', 'Q', 'K', 'A'].includes(card.rank)) return 1;
@@ -115,19 +131,35 @@
     return captured.reduce((sum, card) => sum + specialPoints(card), 0);
   }
 
+  // A table marker contributes a point when the marker itself would not
+  // already score. The special 2♣ gets +1 while active, taking it from
+  // its normal 1 point to 2. A/10/J/Q/K (including 10♦) get no extra table point.
   function tableMarkerBonus(card) {
     if (!card) return 1;
     if (card.rank === '2' && card.suit === 'clubs') return 1;
     return specialPoints(card) > 0 ? 0 : 1;
   }
 
+  // On a capture, the played scoring card also keeps its own point.
+  // The card being used as the move is not a captured card, but the game's
+  // scoring rules award its 1 point when it makes a capture. A table marker
+  // does not create an extra point for A/10/J/Q/K; the existing table-marker
+  // bonus rules remain separate.
   function scoreCapture(captured, madeTable, markerCard = null, playedCard = null) {
     return capturePoints(captured) + (playedCard ? specialPoints(playedCard) : 0) + (madeTable ? tableMarkerBonus(markerCard) : 0);
   }
 
   window.TabinetRules = {
-    cardValues, targetValues, allCaptureGroups, allCaptureGroupsForStacks,
-    isLockedStack, findCaptureSelections, flattenSelection,
-    specialPoints, capturePoints, tableMarkerBonus, scoreCapture
+    cardValues,
+    targetValues,
+    allCaptureGroups,
+    allCaptureGroupsForStacks,
+    isLockedStack,
+    findCaptureSelections,
+    flattenSelection,
+    specialPoints,
+    capturePoints,
+    tableMarkerBonus,
+    scoreCapture
   };
 }());

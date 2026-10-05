@@ -2006,6 +2006,20 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   }
 }
 
+.dialog-focus-sentinel {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  outline: 0 !important;
+}
+
 @media (max-width: 600px) {
   .profile-field input[type="text"] {
     font-size: 16px !important;

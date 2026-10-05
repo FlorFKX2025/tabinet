@@ -2068,3 +2068,39 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
     min-height: 62px !important;
   }
 }
+
+
+/* v0.7.6 desktop profile scroll repair */
+.profile-dialog {
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  max-height: min(90vh, 860px) !important;
+}
+
+.profile-dialog-scroll {
+  min-height: 0 !important;
+  max-height: calc(90vh - 34px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  padding-right: 4px;
+}
+
+.profile-dialog-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+@media (max-width: 600px) {
+  .profile-dialog {
+    max-height: calc(100dvh - 20px) !important;
+  }
+
+  .profile-dialog-scroll {
+    max-height: calc(100dvh - 54px) !important;
+    touch-action: pan-y;
+  }
+}

@@ -2020,6 +2020,16 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   outline: 0 !important;
 }
 
+/* v0.7.6 desktop profile fix: the full profile card must remain scrollable
+   so the Save button is reachable on PC as well as on short screens. */
+.profile-dialog {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  max-height: min(90vh, 860px) !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+}
+
 @media (max-width: 600px) {
   .profile-field input[type="text"] {
     font-size: 16px !important;

@@ -2070,7 +2070,80 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
 }
 
 
-/* v0.7.6 desktop profile scroll repair */
+/* v0.7.6 profile/rules scroll repair: use a definite modal height so
+   the inner scrollers have real space to scroll into. */
+.profile-dialog {
+  display: flex !important;
+  flex-direction: column !important;
+  box-sizing: border-box !important;
+  width: min(780px, calc(100vw - 24px)) !important;
+  height: min(90vh, 860px) !important;
+  max-height: min(90vh, 860px) !important;
+  overflow: hidden !important;
+}
+
+.profile-dialog-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: auto !important;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+}
+
+.profile-dialog-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 0;
+}
+
+.rules-dialog {
+  display: flex !important;
+  flex-direction: column !important;
+  box-sizing: border-box !important;
+  width: min(920px, calc(100vw - 24px)) !important;
+  height: min(88vh, 860px) !important;
+  max-height: min(88vh, 860px) !important;
+  overflow: hidden !important;
+}
+
+.rules-dialog .rules-grid {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: auto !important;
+  scrollbar-gutter: stable;
+  padding-right: 8px;
+}
+
+@media (max-width: 600px) {
+  .profile-dialog {
+    height: calc(100dvh - 20px) !important;
+    max-height: calc(100dvh - 20px) !important;
+  }
+
+  .profile-dialog-scroll {
+    touch-action: pan-y;
+  }
+
+  .rules-dialog {
+    height: calc(100dvh - 20px) !important;
+    max-height: calc(100dvh - 20px) !important;
+  }
+
+  .rules-dialog .rules-grid {
+    grid-template-columns: 1fr !important;
+    touch-action: pan-y;
+  }
+}
+
 .profile-dialog {
   display: flex !important;
   flex-direction: column !important;
@@ -2105,5 +2178,45 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
     height: 0 !important;
     max-height: none !important;
     touch-action: pan-y;
+  }
+}
+
+
+/* v0.7.6 final scroll authority */
+.profile-dialog {
+  height: min(90vh, 860px) !important;
+  max-height: min(90vh, 860px) !important;
+  overflow: hidden !important;
+}
+.profile-dialog-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+  scrollbar-width: auto !important;
+}
+.rules-dialog {
+  height: min(88vh, 860px) !important;
+  max-height: min(88vh, 860px) !important;
+  overflow: hidden !important;
+}
+.rules-dialog .rules-grid {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+}
+@media (max-width: 600px) {
+  .profile-dialog {
+    height: calc(100dvh - 20px) !important;
+    max-height: calc(100dvh - 20px) !important;
+  }
+  .rules-dialog {
+    height: calc(100dvh - 20px) !important;
+    max-height: calc(100dvh - 20px) !important;
+  }
+  .rules-dialog .rules-grid {
+    grid-template-columns: 1fr !important;
   }
 }

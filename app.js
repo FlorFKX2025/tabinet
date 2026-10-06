@@ -51,6 +51,30 @@ const $ = (id) => document.getElementById(id);
 const rules = window.TabinetRules;
 let deferredPrompt = null;
 let audioContext = null;
+
+const USER_DATA_KEY = 'tabinet-user-data-v1';
+
+function loadUserDataSnapshot() {
+  try {
+    const raw = localStorage.getItem(USER_DATA_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveUserDataSnapshot(patch = {}) {
+  try {
+    const current = loadUserDataSnapshot();
+    const next = { version: 1, ...current, ...patch };
+    localStorage.setItem(USER_DATA_KEY, JSON.stringify(next));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 let settings = loadSettings();
 let battleHistory = loadBattleHistory();
 let profile = loadProfile();
@@ -109,14 +133,15 @@ function preventMainMenuScroll(event) {
 const modalScrollObserver = new MutationObserver(syncModalScrollLock);
 
 function loadSettings() {
+  const stored = loadUserDataSnapshot().settings;
   try {
-    const storedVolume = Number(localStorage.getItem('tabinet-volume'));
+    const storedVolume = Number(stored?.volume ?? localStorage.getItem('tabinet-volume'));
     const volume = Number.isFinite(storedVolume) ? Math.min(1, Math.max(0, storedVolume)) : 0.95;
     return {
-      sound: localStorage.getItem('tabinet-sound') !== 'off',
+      sound: typeof stored?.sound === 'boolean' ? stored.sound : localStorage.getItem('tabinet-sound') !== 'off',
       volume,
-      animations: localStorage.getItem('tabinet-animations') !== 'off',
-      language: localStorage.getItem('tabinet-language') || 'ro',
+      animations: typeof stored?.animations === 'boolean' ? stored.animations : localStorage.getItem('tabinet-animations') !== 'off',
+      language: stored?.language === 'en' ? 'en' : (localStorage.getItem('tabinet-language') || 'ro'),
     };
   } catch {
     return { sound: true, volume: 0.95, animations: true, language: 'ro' };
@@ -125,6 +150,8 @@ function loadSettings() {
 
 function loadBattleHistory() {
   try {
+    const stored = loadUserDataSnapshot().battleHistory;
+    if (Array.isArray(stored)) return stored.slice(0, 8);
     const raw = localStorage.getItem('tabinet-battle-log');
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed.slice(0, 8) : [];
@@ -140,12 +167,22 @@ function saveSettings() {
     localStorage.setItem('tabinet-animations', settings.animations ? 'on' : 'off');
     localStorage.setItem('tabinet-language', settings.language);
   } catch { /* storage is optional */ }
+
+  saveUserDataSnapshot({
+    settings: {
+      sound: Boolean(settings.sound),
+      volume: Number(settings.volume),
+      animations: Boolean(settings.animations),
+      language: settings.language === 'en' ? 'en' : 'ro'
+    }
+  });
 }
 
 function saveBattleHistory() {
   try {
     localStorage.setItem('tabinet-battle-log', JSON.stringify(battleHistory));
   } catch { /* storage is optional */ }
+  saveUserDataSnapshot({ battleHistory: Array.isArray(battleHistory) ? battleHistory.slice(0, 8) : [] });
 }
 
 const PAUSED_MATCH_KEY = 'tabinet-paused-match';
@@ -193,28 +230,36 @@ function makeDefaultProfileId() {
 
 function loadProfile() {
   try {
-    const raw = localStorage.getItem('tabinet-profile');
-    const parsed = raw ? JSON.parse(raw) : null;
+    const stored = loadUserDataSnapshot().profile;
+    const legacyRaw = localStorage.getItem('tabinet-profile');
+    const legacy = legacyRaw ? JSON.parse(legacyRaw) : null;
+    const parsed = (stored && typeof stored === 'object') ? stored : legacy;
     if (parsed && typeof parsed === 'object') {
-      return { name: String(parsed.name || 'Jucător').slice(0,18), id: String(parsed.id || makeDefaultProfileId()), avatar: parsed.avatar || { kind:'template', id:'01' } };
+      return {
+        name: String(parsed.name || 'Jucător').slice(0,18),
+        id: String(parsed.id || makeDefaultProfileId()),
+        avatar: parsed.avatar || { kind:'template', id:'01' }
+      };
     }
   } catch {}
   return { name: 'Jucător', id: makeDefaultProfileId(), avatar: { kind:'template', id:'01' } };
 }
 
 function saveProfile() {
+  let saved = false;
+  const payload = {
+    version: 1,
+    name: String(profile.name || 'Jucător').slice(0,18),
+    id: String(profile.id || makeDefaultProfileId()),
+    avatar: profile.avatar || { kind:'template', id:'01' }
+  };
   try {
-    const payload = {
-      version: 1,
-      name: String(profile.name || 'Jucător').slice(0,18),
-      id: String(profile.id || makeDefaultProfileId()),
-      avatar: profile.avatar || { kind:'template', id:'01' }
-    };
     localStorage.setItem('tabinet-profile', JSON.stringify(payload));
-    return true;
-  } catch {
-    return false;
-  }
+    saved = true;
+  } catch {}
+
+  saveUserDataSnapshot({ profile: payload });
+  return saved;
 }
 
 function getAvatarTemplate(id) { return AVATAR_TEMPLATES.find(item => item.id === id) || AVATAR_TEMPLATES[0]; }
@@ -1827,7 +1872,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=076-mobile3').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=076-profile-rules3').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

@@ -130,6 +130,28 @@ function preventMainMenuScroll(event) {
   event.preventDefault();
 }
 
+function forceModalCleanup() {
+  document.querySelectorAll('dialog').forEach(dialog => {
+    if (dialog.open) dialog.close();
+  });
+  const html = document.documentElement;
+  const body = document.body;
+  if (!body) return;
+  html.classList.remove('modal-scroll-locked');
+  body.classList.remove('modal-scroll-locked');
+  // Restore the normal page positioning that was used while a modal was open.
+  body.style.position = '';
+  body.style.top = '';
+  body.style.left = '';
+  body.style.right = '';
+  body.style.width = '';
+  modalScrollWasLocked = false;
+  window.requestAnimationFrame(() => {
+    html.classList.remove('modal-scroll-locked');
+    body.classList.remove('modal-scroll-locked');
+  });
+}
+
 const modalScrollObserver = new MutationObserver(syncModalScrollLock);
 
 function loadSettings() {
@@ -1771,7 +1793,11 @@ $('soundVolume').addEventListener('input', event => { settings.volume = Math.min
 $('soundVolume').addEventListener('change', () => playTone('success'));
 $('animationToggle').addEventListener('click', () => { settings.animations = !settings.animations; if (!settings.animations) { state.animating = false; } saveSettings(); updateSettingsUI(); playTone('button'); });
 $('profileMenuBtn').addEventListener('click', () => { playTone('button'); openProfile(); });
-$('closeProfileBtn').addEventListener('click', () => { playTone('button'); $('profileDialog').close(); });
+$('closeProfileBtn').addEventListener('click', () => {
+  playTone('button');
+  $('profileDialog').close();
+  forceModalCleanup();
+});
 $('profileNameInput').addEventListener('pointerdown', event => {
   const input = $('profileNameInput');
   if (!input || !input.readOnly) return;
@@ -1825,7 +1851,11 @@ $('profileImageInput').addEventListener('change', event => {
   reader.readAsDataURL(file);
 });
 $('rulesMenuBtn').addEventListener('click', () => { playTone('button'); openRules(); });
-$('closeRulesBtn').addEventListener('click', () => { playTone('button'); $('rulesDialog').close(); });
+$('closeRulesBtn').addEventListener('click', () => {
+  playTone('button');
+  $('rulesDialog').close();
+  forceModalCleanup();
+});
 $('gameMenuBtn').addEventListener('click', () => { playTone('button'); pauseCurrentMatch(); });
 $('restartMatchBtn').addEventListener('click', () => { playTone('button'); void startMatch(state.difficulty); });
 $('rejoinMatchBtn').addEventListener('click', () => { playTone('button'); restoreMatchFromPause(); });
@@ -1876,7 +1906,10 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=07
 
 applyLanguage();
 dialogElements().forEach(dialog => {
-  dialog.addEventListener('close', syncModalScrollLock);
+  dialog.addEventListener('close', () => {
+    syncModalScrollLock();
+    if (!dialogElements().some(item => item.open)) forceModalCleanup();
+  });
 });
 if (document.body) {
   modalScrollObserver.observe(document.body, { subtree:true, attributes:true, attributeFilter:['open'] });

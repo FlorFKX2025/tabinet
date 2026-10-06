@@ -1,5 +1,5 @@
-const CACHE = 'tabinet-v0.7.6-pages-profile-rules3';
-const ASSETS = ['./', './index.html', './styles.css?v=076-profile-rules3', './rules.js?v=076-profile-rules3', './app.js?v=076-profile-rules3', './manifest.webmanifest', './icons/icon.svg?v=076-profile-rules3'];
+const CACHE = 'tabinet-v0.7.6-pages-modal-cleanup4';
+const ASSETS = ['./', './index.html', './styles.css?v=076-modal-cleanup4', './rules.js?v=076-modal-cleanup4', './app.js?v=076-modal-cleanup4', './manifest.webmanifest', './icons/icon.svg?v=076-modal-cleanup4'];
 
 self.addEventListener('install', event => {
   event.waitUntil(

@@ -2072,7 +2072,7 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
 
 /* v0.7.6 profile/rules scroll repair: use a definite modal height so
    the inner scrollers have real space to scroll into. */
-.profile-dialog {
+.profile-dialog[open] {
   display: flex !important;
   flex-direction: column !important;
   box-sizing: border-box !important;
@@ -2101,7 +2101,7 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   height: 0;
 }
 
-.rules-dialog {
+.rules-dialog[open] {
   display: flex !important;
   flex-direction: column !important;
   box-sizing: border-box !important;
@@ -2124,7 +2124,7 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
 }
 
 @media (max-width: 600px) {
-  .profile-dialog {
+  .profile-dialog[open] {
     height: calc(100dvh - 20px) !important;
     max-height: calc(100dvh - 20px) !important;
   }
@@ -2133,7 +2133,7 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
     touch-action: pan-y;
   }
 
-  .rules-dialog {
+  .rules-dialog[open] {
     height: calc(100dvh - 20px) !important;
     max-height: calc(100dvh - 20px) !important;
   }
@@ -2183,10 +2183,13 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
 
 
 /* v0.7.6 final scroll authority */
-.profile-dialog {
+.profile-dialog[open] {
   height: min(90vh, 860px) !important;
   max-height: min(90vh, 860px) !important;
   overflow: hidden !important;
+}
+.profile-dialog:not([open]) {
+  display: none !important;
 }
 .profile-dialog-scroll {
   flex: 1 1 auto !important;
@@ -2196,10 +2199,13 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   overflow-y: auto !important;
   scrollbar-width: auto !important;
 }
-.rules-dialog {
+.rules-dialog[open] {
   height: min(88vh, 860px) !important;
   max-height: min(88vh, 860px) !important;
   overflow: hidden !important;
+}
+.rules-dialog:not([open]) {
+  display: none !important;
 }
 .rules-dialog .rules-grid {
   flex: 1 1 auto !important;

@@ -331,15 +331,20 @@
     <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
     <div class="dialog-kicker" id="friendsKicker">PRIETENI</div>
     <div class="friends-head">
-      <div><h2 id="friendsTitle">Prieteni</h2><p class="dialog-copy" id="friendsCopy">Adaugă prieteni după ID și gestionează cererile.</p></div>
+      <div><h2 id="friendsTitle">Prieteni</h2><p class="dialog-copy" id="friendsCopy">Conectează-te cu jucători, vezi cine este online și gestionează cererile.</p></div>
       <button class="secondary tiny-btn" id="addFriendBtn" type="button">＋ Adaugă</button>
     </div>
+    <div class="friends-summary" aria-label="Rezumat prieteni">
+      <div class="friends-summary-stat"><strong id="friendsListCount">0</strong><span id="friendsSummaryCountLabel">Prieteni</span></div>
+      <div class="friends-summary-stat"><strong id="friendsOnlineCount">0</strong><span id="friendsOnlineLabel">online</span></div>
+      <div class="friends-summary-stat"><strong id="friendsRequestsCount">0</strong><span id="friendsRequestsCountLabel">Cereri</span></div>
+    </div>
     <section class="friends-section">
-      <div class="friends-section-head"><strong id="friendsRequestsTitle">Cereri primite</strong><span class="friends-section-count" id="friendsRequestsCount">0</span></div>
+      <div class="friends-section-head"><strong id="friendsRequestsTitle">Cereri primite</strong></div>
       <div id="friendRequestsList" class="friend-requests-list"></div>
     </section>
     <section class="friends-section">
-      <div class="friends-section-head"><strong id="friendsListTitle">Lista mea</strong><span class="friends-section-count" id="friendsListCount">0</span></div>
+      <div class="friends-section-head"><strong id="friendsListTitle">Lista mea</strong></div>
       <div id="friendsList" class="friends-list"></div>
     </section>
     <div class="dialog-actions"><button class="primary" id="closeFriendsBtn" type="button">Închide</button></div>
@@ -440,7 +445,27 @@
         <option value="en">English</option>
       </select>
     </div>
+    <section class="danger-zone">
+      <div><strong id="deleteAccountTitle">Șterge contul</strong><small id="deleteAccountCopy">Ștergerea este definitivă: vei pierde ID-ul, numele, progresul, istoricul local și toate datele de prieteni.</small></div>
+      <button class="danger danger-outline" id="deleteAccountBtn" type="button">Șterge definitiv contul</button>
+    </section>
     <div class="dialog-actions"><button class="primary" id="closeSettingsBtn" type="button">Gata</button></div>
+  </dialog>
+
+  <dialog id="deleteAccountDialog" class="choice-dialog delete-account-dialog" tabindex="-1">
+    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+    <div class="dialog-kicker" id="deleteAccountKicker">CONT</div>
+    <h2 id="deleteAccountConfirmTitle">Ești sigur că vrei să continui?</h2>
+    <p class="dialog-copy" id="deleteAccountConfirmCopy">Această acțiune nu poate fi anulată. După ștergere vei primi automat un ID nou.</p>
+    <div class="delete-account-warning">
+      <span aria-hidden="true">⚠</span>
+      <strong id="deleteAccountCopyPreview">ID-ul, numele, progresul, istoricul local și prietenii vor fi șterse.</strong>
+    </div>
+    <div id="deleteAccountStatus" class="friend-search-status" aria-live="polite"></div>
+    <div class="dialog-actions">
+      <button class="secondary" id="cancelDeleteAccountBtn" type="button">Nu, păstrează contul</button>
+      <button class="danger" id="confirmDeleteAccountBtn" type="button">Șterge definitiv contul</button>
+    </div>
   </dialog>
 
   <!-- Match history -->
@@ -529,7 +554,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./rules.js?v=076-friends4" defer></script>
-  <script src="./app.js?v=076-friends4" defer></script>
+  <script src="./rules.js?v=077-account" defer></script>
+  <script src="./app.js?v=077-account" defer></script>
 </body>
 </html>

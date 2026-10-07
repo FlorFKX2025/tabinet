@@ -220,10 +220,18 @@ async function openFriendProfile(playerId) {
   const friend=(window.__tabinetFriends||[]).find(item=>String(item.player_id).toUpperCase()===String(playerId).toUpperCase());
   if(!friend)return;
   const dialog=$('friendProfileDialog');if(!dialog)return;
+
+  window.__reopenFriendsAfterProfile = Boolean($('friendsDialog')?.open);
+  closeFriendsTimers();
+  if ($('friendsDialog')?.open) $('friendsDialog').close();
+
+  dialog.showModal();
   renderFriendProfileData({profile:friend,stats:{},recent_matches:[]});
   renderFriendProfileEmpty('friendProfileLoading');
-  dialog.showModal();
-  requestAnimationFrame(()=>dialog.querySelector('.dialog-focus-sentinel')?.focus({preventScroll:true}));
+  requestAnimationFrame(()=>{
+    dialog.querySelector('.dialog-focus-sentinel')?.focus({preventScroll:true});
+  });
+
   try {
     const result=await tabinetRpc('tabinet_get_friend_profile',{
       p_viewer_player_id:profile.id,
@@ -2325,7 +2333,16 @@ $('friendRequestNotification').addEventListener('click', event => {
   if(accept){playTone('button');void respondToFriendRequest(accept.dataset.requestId,true);}
   if(reject){playTone('button');void respondToFriendRequest(reject.dataset.requestId,false);}
 });
-$('closeFriendProfileBtn').addEventListener('click',()=>{$('friendProfileDialog').close();syncModalScrollLock();});
+$('closeFriendProfileBtn').addEventListener('click',()=>{
+  playTone('button');
+  const dialog=$('friendProfileDialog');
+  if(dialog?.open) dialog.close();
+  syncModalScrollLock();
+  if (window.__reopenFriendsAfterProfile) {
+    window.__reopenFriendsAfterProfile=false;
+    requestAnimationFrame(()=>openFriends());
+  }
+});
 $('closeDeleteFriendBtn').addEventListener('click',()=>{$('deleteFriendDialog').close();syncModalScrollLock();});
 $('cancelDeleteFriendBtn').addEventListener('click',()=>{$('deleteFriendDialog').close();syncModalScrollLock();});
 $('confirmDeleteFriendBtn').addEventListener('click',()=>{playTone('button');void deleteFriend($('deleteFriendDialog').dataset.playerId);});

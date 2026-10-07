@@ -195,7 +195,7 @@ function openDeleteFriendWarning(playerId){
 async function deleteFriend(playerId){
   try{
     const result=await tabinetRpc('tabinet_delete_friend',{p_player_id:profile.id,p_friend_player_id:playerId,p_device_token:getFriendsDeviceToken()});
-    if(result&&result.ok){$('deleteFriendDialog')?.close();forceModalCleanup();await refreshFriendsData();}
+    if(result&&result.ok){$('deleteFriendDialog')?.close();syncModalScrollLock();await refreshFriendsData();}
   }catch{
     const status=$('deleteFriendStatus');if(status)status.textContent=t('friendBackendError');
   }
@@ -2153,9 +2153,9 @@ $('friendRequestNotification').addEventListener('click', event => {
   if(accept){playTone('button');void respondToFriendRequest(accept.dataset.requestId,true);}
   if(reject){playTone('button');void respondToFriendRequest(reject.dataset.requestId,false);}
 });
-$('closeFriendProfileBtn').addEventListener('click',()=>{$('friendProfileDialog').close();forceModalCleanup();});
-$('closeDeleteFriendBtn').addEventListener('click',()=>{$('deleteFriendDialog').close();forceModalCleanup();});
-$('cancelDeleteFriendBtn').addEventListener('click',()=>{$('deleteFriendDialog').close();forceModalCleanup();});
+$('closeFriendProfileBtn').addEventListener('click',()=>{$('friendProfileDialog').close();syncModalScrollLock();});
+$('closeDeleteFriendBtn').addEventListener('click',()=>{$('deleteFriendDialog').close();syncModalScrollLock();});
+$('cancelDeleteFriendBtn').addEventListener('click',()=>{$('deleteFriendDialog').close();syncModalScrollLock();});
 $('confirmDeleteFriendBtn').addEventListener('click',()=>{playTone('button');void deleteFriend($('deleteFriendDialog').dataset.playerId);});
 $('rulesMenuBtn').addEventListener('click', () => { playTone('button'); openRules(); });
 $('closeRulesBtn').addEventListener('click', () => {

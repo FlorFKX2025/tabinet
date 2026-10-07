@@ -75,6 +75,211 @@ function saveUserDataSnapshot(patch = {}) {
   }
 }
 
+const TABINET_SUPABASE_URL = 'https://jiducklriavzbiiwffjc.supabase.co';
+const TABINET_SUPABASE_KEY = 'sb_publishable_tU3A1oB0B0G-CjC1SBRUQg_oiI-GoSA';
+const tabinetSupabase = window.supabase && window.supabase.createClient ? window.supabase.createClient(TABINET_SUPABASE_URL, TABINET_SUPABASE_KEY) : null;
+let friendsRefreshTimer = null;
+let friendsHeartbeatTimer = null;
+
+function getFriendsDeviceToken() {
+  const stored = loadUserDataSnapshot().friendsDeviceToken;
+  if (stored) return stored;
+  const token = (crypto && crypto.randomUUID ? crypto.randomUUID() : 'device-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+  saveUserDataSnapshot({ friendsDeviceToken: token });
+  return token;
+}
+
+async function tabinetRpc(fn, args) {
+  if (!tabinetSupabase) throw new Error('backend_unavailable');
+  const result = await tabinetSupabase.rpc(fn, args || {});
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+function friendAvatarMarkup(avatar) {
+  if (avatar && avatar.kind === 'custom' && avatar.dataUrl) {
+    return '<span class="friend-avatar"><img src="' + escapeHtml(avatar.dataUrl) + '" alt=""></span>';
+  }
+  const glyphs = { '01':'♟','02':'♣','03':'♟','04':'◈','05':'✦','06':'♟' };
+  return '<span class="friend-avatar">' + (glyphs[String(avatar && avatar.id || '01')] || '♟') + '</span>';
+}
+
+function friendLastSeenText(lastSeen, isOnline) {
+  if (isOnline) return t('friendOnline');
+  const time = lastSeen ? new Date(lastSeen) : null;
+  if (!time || Number.isNaN(time.getTime())) return t('friendOffline');
+  const mins = Math.max(0, Math.floor((Date.now() - time.getTime()) / 60000));
+  if (mins < 1) return t('friendLastSeenNow');
+  if (mins < 60) return t('friendLastSeenMinutes').replace('{n}', String(mins));
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return t('friendLastSeenHours').replace('{n}', String(hours));
+  return t('friendLastSeenDays').replace('{n}', String(Math.floor(hours / 24)));
+}
+
+function renderFriendRequests(requests) {
+  const list = $('friendRequestsList'), count = $('friendsRequestsCount'), badge = $('friendsPendingBadge');
+  const rows = Array.isArray(requests) ? requests : [];
+  if (count) count.textContent = String(rows.length);
+  if (badge) {
+    badge.textContent = String(rows.length);
+    badge.classList.toggle('hidden', rows.length === 0);
+  }
+  if (!list) return;
+  list.innerHTML = '';
+  if (!rows.length) {
+    list.innerHTML = '<div class="friends-empty">' + escapeHtml(t('friendNoRequests')) + '</div>';
+    return;
+  }
+  rows.forEach(req => {
+    const row = document.createElement('article');
+    row.className = 'friend-request-row';
+    row.innerHTML =
+      '<div class="friend-user">' + friendAvatarMarkup(req.avatar) +
+      '<div class="friend-user-copy"><strong>' + escapeHtml(req.name || 'Jucător') + '</strong><small>' + escapeHtml(req.player_id || '') + '</small></div></div>' +
+      '<div class="friend-request-actions">' +
+      '<button class="primary small-btn friend-accept" type="button" data-request-id="' + escapeHtml(req.id) + '">' + escapeHtml(t('friendAccept')) + '</button>' +
+      '<button class="secondary small-btn friend-reject" type="button" data-request-id="' + escapeHtml(req.id) + '">' + escapeHtml(t('friendReject')) + '</button></div>';
+    list.appendChild(row);
+  });
+}
+
+function renderFriendsList(friends) {
+  const list = $('friendsList'), count = $('friendsListCount');
+  const rows = Array.isArray(friends) ? friends : [];
+  if (count) count.textContent = String(rows.length);
+  if (!list) return;
+  list.innerHTML = '';
+  if (!rows.length) {
+    list.innerHTML = '<div class="friends-empty">' + escapeHtml(t('friendNoFriends')) + '</div>';
+    return;
+  }
+  rows.forEach(friend => {
+    const online = Boolean(friend.online);
+    const row = document.createElement('article');
+    row.className = 'friend-row';
+    row.innerHTML =
+      '<div class="friend-user">' + friendAvatarMarkup(friend.avatar) +
+      '<div class="friend-user-copy"><strong>' + escapeHtml(friend.name || 'Jucător') + '</strong><small>' + escapeHtml(friend.player_id || '') + '</small></div></div>' +
+      '<div class="friend-row-meta"><span class="friend-status ' + (online ? 'online' : 'offline') + '"><i></i>' +
+      escapeHtml(friendLastSeenText(friend.last_seen, online)) + '</span></div>';
+    list.appendChild(row);
+  });
+}
+
+async function syncProfileOnline() {
+  if (!tabinetSupabase) return;
+  try {
+    await tabinetRpc('tabinet_upsert_profile', {
+      p_player_id: profile.id,
+      p_name: profile.name,
+      p_avatar: profile.avatar || {kind:'template',id:'01'},
+      p_device_token: getFriendsDeviceToken()
+    });
+  } catch {}
+}
+
+async function refreshFriendsData() {
+  if (!tabinetSupabase) return;
+  try {
+    await tabinetRpc('tabinet_heartbeat', {p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+    const results = await Promise.all([
+      tabinetRpc('tabinet_list_friends', {p_player_id:profile.id,p_device_token:getFriendsDeviceToken()}),
+      tabinetRpc('tabinet_list_requests', {p_player_id:profile.id,p_device_token:getFriendsDeviceToken()})
+    ]);
+    renderFriendsList(results[0] && results[0].friends || []);
+    renderFriendRequests(results[1] && results[1].requests || []);
+  } catch {}
+}
+
+function openFriends() {
+  const dialog = $('friendsDialog');
+  if (!dialog) return;
+  dialog.showModal();
+  requestAnimationFrame(() => dialog.querySelector('.dialog-focus-sentinel')?.focus({preventScroll:true}));
+  void refreshFriendsData();
+  if (friendsRefreshTimer) clearInterval(friendsRefreshTimer);
+  friendsRefreshTimer = setInterval(() => { if (dialog.open) void refreshFriendsData(); }, 12000);
+}
+
+function closeFriendsTimers() {
+  if (friendsRefreshTimer) { clearInterval(friendsRefreshTimer); friendsRefreshTimer = null; }
+}
+
+function openFriendSearch() {
+  const dialog = $('friendSearchDialog'), input = $('friendSearchInput');
+  if (!dialog || !input) return;
+  $('friendSearchStatus').textContent = '';
+  $('friendSearchResult').innerHTML = '';
+  $('friendSearchResult').classList.add('hidden');
+  input.value = '';
+  dialog.showModal();
+  requestAnimationFrame(() => input.focus({preventScroll:true}));
+}
+
+function searchFriendById() {
+  const raw = String($('friendSearchInput').value || '').trim().toUpperCase();
+  if (!raw) { $('friendSearchStatus').textContent = t('friendEnterId'); return; }
+  $('friendSearchStatus').textContent = t('friendSearching');
+  void tabinetRpc('tabinet_search_player', {p_player_id:raw})
+    .then(result => {
+      $('friendSearchStatus').textContent = '';
+      const box = $('friendSearchResult');
+      box.classList.remove('hidden');
+      box.innerHTML = '';
+      if (!result || !result.found) {
+        box.innerHTML = '<div class="friends-empty">' + escapeHtml(t('friendNotFound')) + '</div>';
+        return;
+      }
+      const p = result.profile || {};
+      const isSelf = String(p.player_id).toUpperCase() === String(profile.id).toUpperCase();
+      const online = Boolean(p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 75000);
+      const card = document.createElement('article');
+      card.className = 'friend-search-card';
+      card.innerHTML =
+        '<div class="friend-search-profile">' + friendAvatarMarkup(p.avatar) +
+        '<div><strong>' + escapeHtml(p.name || 'Jucător') + '</strong><small>' + escapeHtml(p.player_id || '') + '</small>' +
+        '<div class="friend-row-meta"><span class="friend-status ' + (online ? 'online' : 'offline') + '"><i></i>' + escapeHtml(friendLastSeenText(p.last_seen, online)) + '</span></div></div></div>' +
+        '<div class="friend-search-actions">' +
+        '<button class="secondary small-btn" id="friendSearchCloseResultBtn" type="button">' + escapeHtml(t('friendsCloseSearch')) + '</button>' +
+        '<button class="primary small-btn" id="friendSearchAddResultBtn" type="button" ' + (isSelf ? 'disabled' : '') + '>' + escapeHtml(isSelf ? t('friendThisIsYou') : t('friendAdd')) + '</button></div>';
+      box.appendChild(card);
+      $('friendSearchCloseResultBtn').addEventListener('click', () => { box.innerHTML=''; box.classList.add('hidden'); });
+      $('friendSearchAddResultBtn').addEventListener('click', () => {
+        const btn = $('friendSearchAddResultBtn');
+        btn.disabled = true;
+        void tabinetRpc('tabinet_send_friend_request', {p_from_player_id:profile.id,p_to_player_id:p.player_id,p_device_token:getFriendsDeviceToken()})
+          .then(send => {
+            $('friendSearchStatus').textContent = send && send.ok ? t('friendRequestSent') : t('friendErr_' + (send && send.error || 'generic'));
+            if (send && send.ok) btn.textContent = t('friendSent'); else btn.disabled = false;
+          })
+          .catch(() => { $('friendSearchStatus').textContent=t('friendBackendError'); btn.disabled=false; });
+      });
+    })
+    .catch(() => { $('friendSearchStatus').textContent = t('friendBackendError'); });
+}
+
+function respondToFriendRequest(requestId, accept) {
+  return tabinetRpc('tabinet_respond_friend_request', {
+    p_request_id:requestId, p_accept:Boolean(accept), p_player_id:profile.id, p_device_token:getFriendsDeviceToken()
+  }).then(result => { if (result && result.ok) return refreshFriendsData(); });
+}
+
+function startFriendsHeartbeat() {
+  if (!tabinetSupabase) return;
+  void syncProfileOnline();
+  if (friendsHeartbeatTimer) clearInterval(friendsHeartbeatTimer);
+  friendsHeartbeatTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      void tabinetRpc('tabinet_heartbeat', {p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+    }
+  }, 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void tabinetRpc('tabinet_heartbeat', {p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+    }
+  }, {passive:true});
+}
+
 let settings = loadSettings();
 let battleHistory = loadBattleHistory();
 let profile = loadProfile();

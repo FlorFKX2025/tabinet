@@ -80,6 +80,7 @@ const TABINET_SUPABASE_KEY = 'sb_publishable_tU3A1oB0B0G-CjC1SBRUQg_oiI-GoSA';
 const tabinetSupabase = window.supabase && window.supabase.createClient ? window.supabase.createClient(TABINET_SUPABASE_URL, TABINET_SUPABASE_KEY) : null;
 let friendsRefreshTimer = null;
 let friendsHeartbeatTimer = null;
+let friendsBackgroundRefreshTimer = null;
 
 function getFriendsDeviceToken() {
   const stored = loadUserDataSnapshot().friendsDeviceToken;
@@ -268,14 +269,19 @@ function startFriendsHeartbeat() {
   if (!tabinetSupabase) return;
   void syncProfileOnline();
   if (friendsHeartbeatTimer) clearInterval(friendsHeartbeatTimer);
+  if (friendsBackgroundRefreshTimer) clearInterval(friendsBackgroundRefreshTimer);
   friendsHeartbeatTimer = setInterval(() => {
     if (document.visibilityState === 'visible') {
       void tabinetRpc('tabinet_heartbeat', {p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
     }
   }, 30000);
+  friendsBackgroundRefreshTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') void refreshFriendsData();
+  }, 30000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       void tabinetRpc('tabinet_heartbeat', {p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+      void refreshFriendsData();
     }
   }, {passive:true});
 }

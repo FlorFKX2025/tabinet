@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#071b13">
   <meta name="description" content="Tabinet — joc de cărți românesc, direct în browser.">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/icon.svg?v=076-friends1" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=076-friends1">
+  <link rel="icon" href="./icons/icon.svg?v=076-friends2" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=076-friends2">
   <title>Tabinet • v0.7.6</title>
 <script>
   (function () {
-    const RESET_KEY = 'tabinet-pages-reset-076-friends1';
+    const RESET_KEY = 'tabinet-pages-reset-076-friends2';
     if (!('serviceWorker' in navigator) || !('caches' in window)) return;
     if (localStorage.getItem(RESET_KEY) === '1') return;
     localStorage.setItem(RESET_KEY, '1');
@@ -61,6 +61,7 @@
         <button class="icon-button" id="menuInstallBtn" type="button" hidden aria-label="Instalează PWA">↗</button>
       </header>
 
+      <aside id="friendRequestNotification" class="friend-request-notification hidden" aria-live="polite"></aside>
       <div class="menu-layout">
         <div class="menu-hero-card">
           <div class="hero-cards" aria-hidden="true">
@@ -344,6 +345,23 @@
     <div class="dialog-actions"><button class="primary" id="closeFriendsBtn" type="button">Închide</button></div>
   </dialog>
 
+  <dialog id="friendProfileDialog" class="choice-dialog friend-profile-dialog" tabindex="-1">
+    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+    <div class="dialog-kicker">PRIETEN</div>
+    <h2 id="friendProfileTitle">Profilul prietenului</h2>
+    <div class="friend-profile-card"><div id="friendProfileAvatar" class="friend-profile-avatar"></div><div class="friend-user-copy"><strong id="friendProfileName">Jucător</strong><small id="friendProfileId"></small><span id="friendProfileStatus" class="friend-status offline">Offline</span></div></div>
+    <div class="dialog-actions"><button class="secondary" id="closeFriendProfileBtn" type="button">Închide</button></div>
+  </dialog>
+
+  <dialog id="deleteFriendDialog" class="choice-dialog delete-friend-dialog" tabindex="-1">
+    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+    <div class="dialog-kicker">PRIETENI</div>
+    <h2 id="friendDeleteTitle">Ștergi prietenul?</h2>
+    <p class="dialog-copy"><span id="friendDeleteCopy">Ești sigur că vrei să îl ștergi pe</span> <strong id="deleteFriendName">Jucător</strong>?</p>
+    <div id="deleteFriendStatus" class="friend-search-status" aria-live="polite"></div>
+    <div class="dialog-actions"><button class="secondary" id="cancelDeleteFriendBtn" type="button">Nu, păstrează</button><button class="danger" id="confirmDeleteFriendBtn" type="button">Da, șterge</button></div>
+  </dialog>
+
   <dialog id="friendSearchDialog" class="choice-dialog friend-search-dialog" tabindex="-1">
     <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
     <div class="dialog-kicker" id="friendSearchKicker">ADĂUGĂ PRIETEN</div>
@@ -511,7 +529,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./rules.js?v=076-friends1" defer></script>
-  <script src="./app.js?v=076-friends1" defer></script>
+  <script src="./rules.js?v=076-friends2" defer></script>
+  <script src="./app.js?v=076-friends2" defer></script>
 </body>
 </html>

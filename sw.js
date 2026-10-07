@@ -1,5 +1,5 @@
-const CACHE = 'tabinet-v0.7.6-pages-friends1';
-const ASSETS = ['./', './index.html', './styles.css?v=076-friends1', './rules.js?v=076-friends1', './app.js?v=076-friends1', './manifest.webmanifest', './icons/icon.svg?v=076-friends1'];
+const CACHE = 'tabinet-v0.7.6-pages-friends2';
+const ASSETS = ['./', './index.html', './styles.css?v=076-friends2', './rules.js?v=076-friends2', './app.js?v=076-friends2', './manifest.webmanifest', './icons/icon.svg?v=076-friends2'];
 
 self.addEventListener('install', event => {
   event.waitUntil(

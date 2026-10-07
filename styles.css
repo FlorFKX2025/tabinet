@@ -2291,3 +2291,8 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   .friend-search-row{flex-direction:column}
   .friend-search-row .primary{width:100%}
 }
+
+.friend-request-notification{position:relative;margin:14px auto 0;width:min(920px,calc(100% - 24px));display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 14px;border:1px solid rgba(233,199,111,.28);border-radius:16px;background:linear-gradient(135deg,rgba(233,199,111,.12),rgba(17,52,39,.72));box-shadow:0 12px 36px rgba(0,0,0,.18);z-index:20}
+.friend-notification-copy{min-width:0;display:grid;gap:2px}.friend-notification-kicker{font-size:.58rem;letter-spacing:.16em;color:var(--accent);font-weight:900}.friend-notification-copy strong{font-size:.9rem}.friend-notification-copy small{color:var(--muted)}.friend-notification-actions{display:flex;gap:7px;flex:0 0 auto}
+.friend-row-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}.friend-profile-card{display:flex;align-items:center;gap:14px;padding:14px;border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035)}.friend-profile-avatar{width:64px;height:64px;display:grid;place-items:center}.friend-profile-avatar .friend-avatar{width:64px;height:64px;flex-basis:64px;font-size:1.5rem}.danger{border:1px solid rgba(231,104,104,.35)!important;background:rgba(150,45,45,.2)!important;color:#ffd5d5!important}
+@media(max-width:700px){.friend-request-notification{width:calc(100% - 16px);align-items:flex-start;flex-direction:column}.friend-notification-actions{width:100%}.friend-notification-actions button{flex:1}.friend-row-actions{justify-content:flex-start}}

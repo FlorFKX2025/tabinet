@@ -2400,3 +2400,18 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   .delete-account-dialog .dialog-actions{flex-direction:column}
   .delete-account-dialog .dialog-actions button{width:100%}
 }
+
+/* v0.7.8 friend profile + live relationship polish */
+.friend-profile-dialog{width:min(700px,calc(100vw - 24px));max-height:88vh;overflow:hidden}
+.friend-profile-scroll{max-height:calc(88vh - 8px);overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:3px}
+.friend-profile-value{display:block;font-size:.92rem;color:#fff;line-height:1.35}
+.friend-profile-identity .profile-field{justify-content:center;min-height:70px}
+.friend-profile-avatar{width:72px!important;height:72px!important;flex:0 0 72px!important}
+.friend-profile-avatar .friend-avatar{width:72px!important;height:72px!important;flex-basis:72px!important;font-size:1.6rem}
+.friend-profile-dialog .profile-recent-list{max-height:250px}
+.friend-search-add-result:disabled{opacity:.9;cursor:default}
+@media(max-width:700px){
+  .friend-profile-dialog{width:calc(100vw - 14px);max-height:calc(100dvh - 14px)}
+  .friend-profile-scroll{max-height:calc(100dvh - 22px)}
+  .friend-profile-identity{grid-template-columns:1fr}
+}

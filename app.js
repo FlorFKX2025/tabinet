@@ -2228,10 +2228,17 @@ if (document.body) {
   syncModalScrollLock();
 }
 
-renderBattleLog();
-renderHistoryEntries();
-renderProfile();
-renderResumeBar();
-startFriendsHeartbeat();
-startFriendsRealtime();
+// Start the UI loading sequence before optional profile/friends/network work.
 bootLoading();
+
+try { renderBattleLog(); } catch {}
+try { renderHistoryEntries(); } catch {}
+try { renderProfile(); } catch {}
+try { renderResumeBar(); } catch {}
+try { startFriendsHeartbeat(); } catch {}
+try { startFriendsRealtime(); } catch {}
+
+// Safety net: a backend/browser API issue must never leave the app on the loading screen.
+window.setTimeout(() => {
+  if (state.screen === 'loading') showScreen('menuScreen');
+}, 3500);

@@ -351,11 +351,31 @@
   </dialog>
 
   <dialog id="friendProfileDialog" class="choice-dialog friend-profile-dialog" tabindex="-1">
-    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
-    <div class="dialog-kicker">PRIETEN</div>
-    <h2 id="friendProfileTitle">Profilul prietenului</h2>
-    <div class="friend-profile-card"><div id="friendProfileAvatar" class="friend-profile-avatar"></div><div class="friend-user-copy"><strong id="friendProfileName">Jucător</strong><small id="friendProfileId"></small><span id="friendProfileStatus" class="friend-status offline">Offline</span></div></div>
-    <div class="dialog-actions"><button class="secondary" id="closeFriendProfileBtn" type="button">Închide</button></div>
+    <div class="profile-dialog-scroll friend-profile-scroll">
+      <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+      <div class="dialog-kicker" id="friendProfileKicker">PRIETEN</div>
+      <div class="profile-hero">
+        <div class="profile-avatar-large friend-profile-avatar" id="friendProfileAvatar" aria-hidden="true"></div>
+        <div><h2 id="friendProfileTitle">Profilul prietenului</h2><p class="dialog-copy" id="friendProfileCopy">Profilul online al prietenului.</p></div>
+      </div>
+      <div class="profile-identity-grid friend-profile-identity">
+        <div class="profile-field"><span id="friendProfileNameLabel">Nume</span><strong class="friend-profile-value" id="friendProfileName">Jucător</strong></div>
+        <div class="profile-field profile-id-field"><span id="friendProfileIdLabel">ID jucător</span><div class="profile-id-wrap"><code id="friendProfileId"></code></div></div>
+      </div>
+      <section class="profile-section">
+        <div class="profile-section-head"><strong id="friendProfileStatsTitle">Statistici</strong><small id="friendProfileStatsCopy">Rezumatul meciurilor cu botul.</small></div>
+        <div class="profile-stats-grid">
+          <article class="profile-stat-card"><span id="friendProfileWinRateLabel">Win rate</span><strong id="friendProfileWinRate">0%</strong></article>
+          <article class="profile-stat-card"><span id="friendProfile12hLabel">Meciuri în ultimele 12h</span><strong id="friendProfile12h">0</strong></article>
+          <article class="profile-stat-card"><span id="friendProfileTotalLabel">Meciuri înregistrate</span><strong id="friendProfileTotal">0</strong></article>
+        </div>
+      </section>
+      <section class="profile-section">
+        <div class="profile-section-head"><strong id="friendProfileRecentTitle">Ultimele 3 meciuri</strong><small id="friendProfileRecentCopy">Momentan sunt afișate doar meciurile cu botul.</small></div>
+        <div id="friendProfileRecentMatches" class="profile-recent-list"></div>
+      </section>
+      <div class="dialog-actions"><button class="secondary" id="closeFriendProfileBtn" type="button">Închide</button></div>
+    </div>
   </dialog>
 
   <dialog id="deleteFriendDialog" class="choice-dialog delete-friend-dialog" tabindex="-1">

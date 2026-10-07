@@ -170,18 +170,71 @@ function renderFriendRequestNotification(requests) {
   box.innerHTML='<div class="friend-notification-copy"><span class="friend-notification-kicker">'+escapeHtml(t('friendNotificationKicker'))+'</span><strong>'+escapeHtml(req.name||'Jucător')+'</strong><small>'+escapeHtml(t('friendNotificationCopy'))+'</small></div><div class="friend-notification-actions"><button class="primary small-btn friend-notify-accept" type="button" data-request-id="'+escapeHtml(req.id)+'">'+escapeHtml(t('friendAccept'))+'</button><button class="secondary small-btn friend-notify-reject" type="button" data-request-id="'+escapeHtml(req.id)+'">'+escapeHtml(t('friendReject'))+'</button></div>';
 }
 
-function openFriendProfile(playerId){
+function renderFriendProfileEmpty(messageKey) {
+  const recent = $('friendProfileRecentMatches');
+  if (recent) recent.innerHTML = '<div class="profile-empty">' + escapeHtml(t(messageKey)) + '</div>';
+  if ($('friendProfileWinRate')) $('friendProfileWinRate').textContent = '0%';
+  if ($('friendProfile12h')) $('friendProfile12h').textContent = '0';
+  if ($('friendProfileTotal')) $('friendProfileTotal').textContent = '0';
+}
+
+function renderFriendAvatar(el, avatar) {
+  if (!el) return;
+  el.innerHTML = friendAvatarMarkup(avatar);
+}
+
+function renderFriendProfileData(data) {
+  const p = data?.profile || {};
+  const stats = data?.stats || {};
+  const recentMatches = Array.isArray(data?.recent_matches) ? data.recent_matches : [];
+  renderFriendAvatar($('friendProfileAvatar'), p.avatar);
+  $('friendProfileName').textContent = p.name || 'Jucător';
+  $('friendProfileId').textContent = p.player_id || '';
+  const online = Boolean(p.online ?? (p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 75000));
+  $('friendProfileStatus').textContent = friendLastSeenText(p.last_seen, online);
+  $('friendProfileStatus').className = 'friend-status ' + (online ? 'online' : 'offline');
+  if ($('friendProfileWinRate')) $('friendProfileWinRate').textContent = String(stats.win_rate ?? 0) + '%';
+  if ($('friendProfile12h')) $('friendProfile12h').textContent = String(stats.last_12h ?? 0);
+  if ($('friendProfileTotal')) $('friendProfileTotal').textContent = String(stats.matches ?? 0);
+  const recent = $('friendProfileRecentMatches');
+  if (!recent) return;
+  recent.innerHTML = '';
+  if (!recentMatches.length) {
+    recent.innerHTML = '<div class="profile-empty">' + escapeHtml(t('friendProfileNoMatches')) + '</div>';
+    return;
+  }
+  recentMatches.slice(0,3).forEach(match => {
+    const item = document.createElement('div');
+    item.className = 'profile-recent-row';
+    const outcome = match.result === 'draw' ? 'draw' : match.result === 'win' ? 'win' : 'loss';
+    const result = outcome === 'draw' ? t('draw') : outcome === 'win' ? t('profileWin') : t('profileLoss');
+    const difficulty = match.difficulty ? difficultyLabel(match.difficulty) : '';
+    const when = match.played_at ? new Date(match.played_at).toLocaleDateString(settings.language === 'en' ? 'en-GB' : 'ro-RO', {day:'2-digit',month:'2-digit'}) : t('dateNow');
+    item.innerHTML = '<div><span class="battle-mode bot-mode">' + escapeHtml(t('botMode')) + '</span><strong>' + escapeHtml(difficulty) + '</strong></div>' +
+      '<div class="profile-recent-right"><strong>' + escapeHtml(String(match.player_score ?? 0) + ' — ' + String(match.bot_score ?? 0)) + '</strong><small>' + escapeHtml(when + ' · ' + result) + '</small></div>';
+    recent.appendChild(item);
+  });
+}
+
+async function openFriendProfile(playerId) {
   const friend=(window.__tabinetFriends||[]).find(item=>String(item.player_id).toUpperCase()===String(playerId).toUpperCase());
   if(!friend)return;
   const dialog=$('friendProfileDialog');if(!dialog)return;
-  $('friendProfileAvatar').innerHTML=friendAvatarMarkup(friend.avatar);
-  $('friendProfileName').textContent=friend.name||'Jucător';
-  $('friendProfileId').textContent=friend.player_id||'';
-  const online=Boolean(friend.online);
-  $('friendProfileStatus').textContent=friendLastSeenText(friend.last_seen,online);
-  $('friendProfileStatus').className='friend-status '+(online?'online':'offline');
+  renderFriendProfileData({profile:friend,stats:{},recent_matches:[]});
+  renderFriendProfileEmpty('friendProfileLoading');
   dialog.showModal();
   requestAnimationFrame(()=>dialog.querySelector('.dialog-focus-sentinel')?.focus({preventScroll:true}));
+  try {
+    const result=await tabinetRpc('tabinet_get_friend_profile',{
+      p_viewer_player_id:profile.id,
+      p_device_token:getFriendsDeviceToken(),
+      p_target_player_id:friend.player_id
+    });
+    if (dialog.open && result?.ok) renderFriendProfileData(result);
+    else if (dialog.open) renderFriendProfileEmpty('friendProfileError');
+  } catch {
+    if (dialog.open) renderFriendProfileEmpty('friendProfileError');
+  }
 }
 
 function openDeleteFriendWarning(playerId){
@@ -229,6 +282,7 @@ async function refreshFriendsData(){
     window.__tabinetFriendRequests=Array.isArray(requests)?requests:[];
     renderFriendsList(window.__tabinetFriends);
     renderFriendRequests(window.__tabinetFriendRequests);
+    refreshFriendSearchResult();
   }catch{}
 }
 
@@ -257,44 +311,75 @@ function openFriendSearch() {
   requestAnimationFrame(() => input.focus({preventScroll:true}));
 }
 
+function friendSearchRelationshipStatus(targetPlayerId) {
+  const target = String(targetPlayerId || '').toUpperCase();
+  if (!target) return 'none';
+  if (target === String(profile.id).toUpperCase()) return 'self';
+  if ((window.__tabinetFriends || []).some(item => String(item.player_id).toUpperCase() === target)) return 'friends';
+  if ((window.__tabinetFriendRequests || []).some(item => String(item.player_id).toUpperCase() === target)) return 'incoming_pending';
+  return 'none';
+}
+
+async function renderFriendSearchCard(p) {
+  const box = $('friendSearchResult');
+  if (!box) return;
+  const online = Boolean(p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 75000);
+  let relation = friendSearchRelationshipStatus(p.player_id);
+  try {
+    const live = await tabinetRpc('tabinet_get_friend_status', {
+      p_viewer_player_id: profile.id,
+      p_device_token: getFriendsDeviceToken(),
+      p_target_player_id: p.player_id
+    });
+    if (live?.ok) relation = live.status || relation;
+  } catch {}
+  const actionLabel = relation === 'friends'
+    ? t('friendAccepted')
+    : relation === 'incoming_pending'
+      ? t('friendIncoming')
+      : relation === 'outgoing_pending'
+        ? t('friendSent')
+        : relation === 'self'
+          ? t('friendThisIsYou')
+          : t('friendAdd');
+  const disabled = relation !== 'none';
+  box.classList.remove('hidden');
+  box.innerHTML =
+    '<div class="friend-search-profile">' + friendAvatarMarkup(p.avatar) +
+    '<div><strong>' + escapeHtml(p.name || 'Jucător') + '</strong><small>' + escapeHtml(p.player_id || '') + '</small>' +
+    '<div class="friend-row-meta"><span class="friend-status ' + (online ? 'online' : 'offline') + '"><i></i>' + escapeHtml(friendLastSeenText(p.last_seen, online)) + '</span></div></div></div>' +
+    '<div class="friend-search-actions">' +
+    '<button class="secondary small-btn friend-search-close-result" type="button">' + escapeHtml(t('friendsCloseSearch')) + '</button>' +
+    '<button class="primary small-btn friend-search-add-result" type="button" data-player-id="' + escapeHtml(p.player_id || '') + '" ' + (disabled ? 'disabled' : '') + '>' + escapeHtml(actionLabel) + '</button></div>';
+}
+
+function refreshFriendSearchResult() {
+  const input = $('friendSearchInput');
+  const box = $('friendSearchResult');
+  const target = input?.value?.trim().toUpperCase();
+  const cached = window.__tabinetFriendSearchProfile;
+  if (!box || box.classList.contains('hidden') || !cached || !target) return;
+  if (String(cached.player_id).toUpperCase() !== target) return;
+  void renderFriendSearchCard(cached);
+}
+
 function searchFriendById() {
   const raw = String($('friendSearchInput').value || '').trim().toUpperCase();
   if (!raw) { $('friendSearchStatus').textContent = t('friendEnterId'); return; }
   $('friendSearchStatus').textContent = t('friendSearching');
   void tabinetRpc('tabinet_search_player', {p_player_id:raw})
-    .then(result => {
+    .then(async result => {
       $('friendSearchStatus').textContent = '';
       const box = $('friendSearchResult');
-      box.classList.remove('hidden');
-      box.innerHTML = '';
       if (!result || !result.found) {
+        window.__tabinetFriendSearchProfile = null;
+        box.classList.remove('hidden');
         box.innerHTML = '<div class="friends-empty">' + escapeHtml(t('friendNotFound')) + '</div>';
         return;
       }
       const p = result.profile || {};
-      const isSelf = String(p.player_id).toUpperCase() === String(profile.id).toUpperCase();
-      const online = Boolean(p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 75000);
-      const card = document.createElement('article');
-      card.className = 'friend-search-card';
-      card.innerHTML =
-        '<div class="friend-search-profile">' + friendAvatarMarkup(p.avatar) +
-        '<div><strong>' + escapeHtml(p.name || 'Jucător') + '</strong><small>' + escapeHtml(p.player_id || '') + '</small>' +
-        '<div class="friend-row-meta"><span class="friend-status ' + (online ? 'online' : 'offline') + '"><i></i>' + escapeHtml(friendLastSeenText(p.last_seen, online)) + '</span></div></div></div>' +
-        '<div class="friend-search-actions">' +
-        '<button class="secondary small-btn" id="friendSearchCloseResultBtn" type="button">' + escapeHtml(t('friendsCloseSearch')) + '</button>' +
-        '<button class="primary small-btn" id="friendSearchAddResultBtn" type="button" ' + (isSelf ? 'disabled' : '') + '>' + escapeHtml(isSelf ? t('friendThisIsYou') : t('friendAdd')) + '</button></div>';
-      box.appendChild(card);
-      $('friendSearchCloseResultBtn').addEventListener('click', () => { box.innerHTML=''; box.classList.add('hidden'); });
-      $('friendSearchAddResultBtn').addEventListener('click', () => {
-        const btn = $('friendSearchAddResultBtn');
-        btn.disabled = true;
-        void tabinetRpc('tabinet_send_friend_request', {p_from_player_id:profile.id,p_to_player_id:p.player_id,p_device_token:getFriendsDeviceToken()})
-          .then(send => {
-            $('friendSearchStatus').textContent = send && send.ok ? t('friendRequestSent') : t('friendErr_' + (send && send.error || 'generic'));
-            if (send && send.ok) btn.textContent = t('friendSent'); else btn.disabled = false;
-          })
-          .catch(() => { $('friendSearchStatus').textContent=t('friendBackendError'); btn.disabled=false; });
-      });
+      window.__tabinetFriendSearchProfile = p;
+      await renderFriendSearchCard(p);
     })
     .catch(() => { $('friendSearchStatus').textContent = t('friendBackendError'); });
 }
@@ -891,7 +976,7 @@ const I18N = {
     tableauKicker:'TABLĂ!', tableauTitle:'Alege cartea pentru tablă', tableauCopy:'Ai golit masa. Alege una dintre cărțile capturate de pe masă ca marcaj pentru această tablă.', tableauBonus:'+{bonus} bonus', tableauNoBonus:'fără bonus suplimentar', tableMarker:'Cartea devine marcajul acestei table',
     stackKicker:'STIVĂ', stackTitle:'Pune cartea peste aceeași valoare', stackCancel:'Anulează', stackTarget:'Ai ținut apăsat pe {card}. Alege stiva de {rank} peste care vrei să o așezi.', stackTop:'deasupra',
     rulesKicker:'REGULI', rulesTitle:'Cum se joacă Tabinet', ruleCaptureTitle:'1. Captură', ruleCaptureCopy:'Joci o carte și iei combinațiile de pe masă care au aceeași valoare totală. Poți selecta mai multe combinații compatibile.', ruleAceTitle:'2. Asul', ruleAceCopy:'Asul poate fi folosit ca 1 sau 11. J = 12, Q = 13, K = 14.', ruleStackTitle:'3. Stivă', ruleStackCopy:'Ține apăsat pe o carte și pune-o peste aceeași valoare. Orice stivă de 2 sau mai multe cărți se ia doar cu aceeași valoare și nu intră în sume cu alte cărți.', rulePointsTitle:'4. Puncte', rulePointsCopy:'La o captură, cartea jucată A, 10, J, Q, K sau 2♣ își păstrează și ea punctul, iar cărțile luate de pe masă își păstrează punctele lor. 10♦ este un 10 normal. Pentru tablă, 2–9 dau punctul tablei, A/10/J/Q/K nu primesc un bonus suplimentar de marcaj, iar 2♣ primește +1.', ruleTableauTitle:'5. Tablă', ruleTableauCopy:'Când golești masa, alegi cartea care marchează tabla. Când adversarul ia o tablă, una dintre tablele tale este anulată.', ruleLastHandTitle:'6. Ultima mână', ruleLastHandCopy:'Cine face ultima captură ia automat și toate cărțile rămase pe masă și punctele speciale ale lor.', understood:'Am înțeles',
-    friendsKicker:'PRIETENI', friendsTitle:'Prieteni', friendsCopy:'Conectează-te cu jucători, vezi cine este online și gestionează cererile.', friendsRequestsTitle:'Cereri primite', friendsListTitle:'Lista mea', friendsSummaryCountLabel:'Prieteni', friendsRequestsCountLabel:'Cereri', friendsOnlineLabel:'online', friendAdd:'Adaugă', friendOnline:'Online', friendOffline:'Offline', friendLastSeenNow:'acum', friendLastSeenMinutes:'acum {n} min', friendLastSeenHours:'acum {n} h', friendLastSeenDays:'acum {n} zile', friendNotificationKicker:'CERERE DE PRIETENIE', friendNotificationCopy:'vrea să fie prietenul tău.', friendViewProfile:'Vezi profilul', friendDelete:'Șterge', friendDeleteTitle:'Ștergi prietenul?', friendDeleteCopy:'Ești sigur că vrei să îl ștergi pe', friendDeleteConfirm:'Da, șterge', friendDeleteCancel:'Nu, păstrează', friendProfileTitle:'Profilul prietenului', friendNoRequests:'Nu ai cereri de prietenie.', friendNoFriends:'Nu ai încă prieteni adăugați.', friendAccept:'Acceptă', friendReject:'Refuză', friendSearchKicker:'ADĂUGĂ PRIETEN', friendSearchTitle:'Caută după ID', friendSearchCopy:'Introdu ID-ul exact al jucătorului pe care vrei să-l adaugi.', friendEnterId:'Introdu un ID.', friendSearching:'Se caută…', friendNotFound:'Nu am găsit niciun jucător cu acest ID.', friendRequestSent:'Cererea a fost trimisă.', friendSent:'Trimisă', friendThisIsYou:'Ești tu', friendBackendError:'Serviciul online nu este disponibil momentan.', friendErr_already_friends:'Sunteți deja prieteni.', friendErr_request_pending:'Cererea este deja trimisă.', friendErr_incoming_pending:'Acest jucător ți-a trimis deja o cerere.', friendErr_cannot_add_self:'Nu te poți adăuga pe tine.', friendErr_sender_not_found:'Profilul tău online nu este sincronizat.', friendErr_generic:'Nu s-a putut trimite cererea.', search:'Caută', friendsClose:'Închide', friendsCloseSearch:'Închide', deleteAccountKicker:'CONT', deleteAccountTitle:'Șterge contul', deleteAccountCopy:'Ștergerea este definitivă: vei pierde ID-ul, numele, progresul, istoricul local și toate datele de prieteni.', deleteAccountBtn:'Șterge definitiv contul', deleteAccountCancel:'Nu, păstrează contul', deleteAccountDeleting:'Se șterg datele…', deleteAccountError:'Contul nu a putut fi șters. Nu s-a pierdut nimic local.', deleteAccountBackendError:'Serviciul online nu este disponibil momentan.', deleteAccountConfirmTitle:'Ești sigur că vrei să continui?', deleteAccountConfirmCopy:'Această acțiune nu poate fi anulată. După ștergere vei primi automat un ID nou.', deleteAccountCopyPreview:'ID-ul, numele, progresul, istoricul local și prietenii vor fi șterse.', settingsKicker:'SETĂRI', settingsTitle:'Preferințe', soundLabel:'Sunete', soundCopy:'Feedback audio pentru acțiuni.', volumeLabel:'Volum', animationsLabel:'Animații', animationsCopy:'Animații complete; OFF păstrează doar tranziții discrete.', languageLabel:'Limbă', languageCopy:'Alege limba interfeței.', done:'Gata',
+    friendsKicker:'PRIETENI', friendsTitle:'Prieteni', friendsCopy:'Conectează-te cu jucători, vezi cine este online și gestionează cererile.', friendsRequestsTitle:'Cereri primite', friendsListTitle:'Lista mea', friendsSummaryCountLabel:'Prieteni', friendsRequestsCountLabel:'Cereri', friendsOnlineLabel:'online', friendAdd:'Adaugă', friendOnline:'Online', friendOffline:'Offline', friendLastSeenNow:'acum', friendLastSeenMinutes:'acum {n} min', friendLastSeenHours:'acum {n} h', friendLastSeenDays:'acum {n} zile', friendNotificationKicker:'CERERE DE PRIETENIE', friendNotificationCopy:'vrea să fie prietenul tău.', friendViewProfile:'Vezi profilul', friendAccepted:'Prieteni', friendIncoming:'Cerere primită', friendDelete:'Șterge', friendDeleteTitle:'Ștergi prietenul?', friendDeleteCopy:'Ești sigur că vrei să îl ștergi pe', friendDeleteConfirm:'Da, șterge', friendDeleteCancel:'Nu, păstrează', friendProfileTitle:'Profilul prietenului', friendNoRequests:'Nu ai cereri de prietenie.', friendNoFriends:'Nu ai încă prieteni adăugați.', friendAccept:'Acceptă', friendReject:'Refuză', friendSearchKicker:'ADĂUGĂ PRIETEN', friendSearchTitle:'Caută după ID', friendSearchCopy:'Introdu ID-ul exact al jucătorului pe care vrei să-l adaugi.', friendEnterId:'Introdu un ID.', friendSearching:'Se caută…', friendNotFound:'Nu am găsit niciun jucător cu acest ID.', friendRequestSent:'Cererea a fost trimisă.', friendSent:'Trimisă', friendThisIsYou:'Ești tu', friendProfileKicker:'PRIETEN', friendProfileCopy:'Profilul online al prietenului.', friendProfileStatsTitle:'Statistici', friendProfileStatsCopy:'Rezumatul meciurilor cu botul.', friendProfileRecentTitle:'Ultimele 3 meciuri', friendProfileRecentCopy:'Momentan sunt afișate doar meciurile cu botul.', friendProfileNameLabel:'Nume', friendProfileIdLabel:'ID jucător', friendProfileNoMatches:'Nu există meciuri cu botul încă.', friendProfileLoading:'Se încarcă profilul…', friendProfileError:'Profilul nu a putut fi încărcat.', friendThisIsYou:'Ești tu', friendBackendError:'Serviciul online nu este disponibil momentan.', friendErr_already_friends:'Sunteți deja prieteni.', friendErr_request_pending:'Cererea este deja trimisă.', friendErr_incoming_pending:'Acest jucător ți-a trimis deja o cerere.', friendErr_cannot_add_self:'Nu te poți adăuga pe tine.', friendErr_sender_not_found:'Profilul tău online nu este sincronizat.', friendErr_generic:'Nu s-a putut trimite cererea.', search:'Caută', friendsClose:'Închide', friendsCloseSearch:'Închide', deleteAccountKicker:'CONT', deleteAccountTitle:'Șterge contul', deleteAccountCopy:'Ștergerea este definitivă: vei pierde ID-ul, numele, progresul, istoricul local și toate datele de prieteni.', deleteAccountBtn:'Șterge definitiv contul', deleteAccountCancel:'Nu, păstrează contul', deleteAccountDeleting:'Se șterg datele…', deleteAccountError:'Contul nu a putut fi șters. Nu s-a pierdut nimic local.', deleteAccountBackendError:'Serviciul online nu este disponibil momentan.', deleteAccountConfirmTitle:'Ești sigur că vrei să continui?', deleteAccountConfirmCopy:'Această acțiune nu poate fi anulată. După ștergere vei primi automat un ID nou.', deleteAccountCopyPreview:'ID-ul, numele, progresul, istoricul local și prietenii vor fi șterse.', settingsKicker:'SETĂRI', settingsTitle:'Preferințe', soundLabel:'Sunete', soundCopy:'Feedback audio pentru acțiuni.', volumeLabel:'Volum', animationsLabel:'Animații', animationsCopy:'Animații complete; OFF păstrează doar tranziții discrete.', languageLabel:'Limbă', languageCopy:'Alege limba interfeței.', done:'Gata',
     profileKicker:'PROFIL', profileTitle:'Profilul meu', profileCopy:'Numele și ID-ul tău sunt salvate local pe acest dispozitiv.', profileNameLabel:'Nume', profileIdLabel:'ID jucător', copyId:'Copiază', copiedId:'Copiat', avatarSectionTitle:'Imagine de profil', avatarSectionCopy:'Alege un avatar.', avatarUploadTitle:'Imagine proprie', avatarUploadCopy:'Alege o imagine de pe dispozitiv.', profileStatsTitle:'Statistici', profileStatsCopy:'Rezumatul meciurilor disponibile.', profileWinRateLabel:'Win rate', profile12hLabel:'Meciuri în ultimele 12h', profileTotalLabel:'Meciuri înregistrate', profileRecentTitle:'Ultimele 3 meciuri', profileRecentCopy:'Momentan sunt afișate meciurile cu botul.', profileNoMatches:'Nu există meciuri disponibile încă.', profileWin:'Victorie', profileLoss:'Înfrângere', avatarTemplate:'Avatar', saveProfile:'Salvează', closeProfile:'Închide', profileMenu:'Profil',
     historyKicker:'ISTORIC MECIURI', historyTitleFull:'Log-uri de meciuri', historyCopy:'Vezi rezultatele și rezumatul fiecărei partide.', close:'Închide', emptyHistory:'Niciun meci terminat încă.', botMode:'BOT', playerMode:'PLAYER', watch:'Watch', soon:'În curând', opponentBot:'Bot', resultYou:'Tu', resultBot:'Botul', draw:'Egalitate', dateNow:'acum', details:'Vezi desfășurarea',
     gameOverKicker:'PARTIDĂ TERMINATĂ', gameOverDraw:'Egalitate', gameOverWin:'Ai câștigat partida', gameOverLoss:'Botul a câștigat partida', gameOverCopy:'Punctajul final include cărțile capturate și tablele active.', menu:'Meniu', rematch:'Mai joci o dată', you:'Tu', abandoned:'Abandonat', pauseKicker:'PARTIDĂ PUSĂ PE PAUZĂ', pauseTitle:'Poți reveni în această partidă.', pauseCopy:'Botul așteaptă. Dacă nu revii la timp, partida va fi declarată pierdută.', rejoin:'Reintră în meci', abandon:'Abandonează', seconds:'sec', pauseExpired:'Timpul a expirat. Partida a fost declarată pierdută.', pauseAbandoned:'Ai abandonat partida. Victoria a fost acordată adversarului.', pauseSaved:'Partida a fost pusă pe pauză.', leaveMatch:'Ieși din meci',
@@ -908,7 +993,7 @@ const I18N = {
     tableauKicker:'TABLE!', tableauTitle:'Choose the card for the table', tableauCopy:'You cleared the table. Choose one captured card to mark this table.', tableauBonus:'+{bonus} bonus', tableauNoBonus:'no extra bonus', tableMarker:'This card becomes the marker for this table',
     stackKicker:'STACK', stackTitle:'Place the card over the same value', stackCancel:'Cancel', stackTarget:'You held {card}. Choose the {rank} stack to place it on.', stackTop:'on top',
     rulesKicker:'RULES', rulesTitle:'How to play Tabinet', ruleCaptureTitle:'1. Capture', ruleCaptureCopy:'Play a card and take table combinations whose total value matches it. You can select multiple compatible combinations.', ruleAceTitle:'2. Ace', ruleAceCopy:'An Ace can count as 1 or 11. J = 12, Q = 13, K = 14.', ruleStackTitle:'3. Stack', ruleStackCopy:'Hold a card and place it over the same value. Any stack of 2 or more cards can only be taken by the same value and never participates in sums with other cards.', rulePointsTitle:'4. Points', rulePointsCopy:'A, 10, J, Q, K and 2♣ are worth 1 point when captured. 10♦ is a normal 10. For a table marker, 2–9 provide the table point, A/10/J/Q/K add nothing extra, and 2♣ gets +1.', ruleTableauTitle:'5. Table', ruleTableauCopy:'When you clear the table, choose the card that marks it. When the opponent takes a table, one of your table markers is cancelled.', ruleLastHandTitle:'6. Last hand', ruleLastHandCopy:'Whoever makes the final capture also takes all cards left on the table and their special points.', understood:'Got it',
-    friendsKicker:'FRIENDS', friendsTitle:'Friends', friendsCopy:'Connect with players, see who is online and manage requests.', friendsRequestsTitle:'Incoming requests', friendsListTitle:'My list', friendsSummaryCountLabel:'Friends', friendsRequestsCountLabel:'Requests', friendsOnlineLabel:'online', friendAdd:'Add', friendOnline:'Online', friendOffline:'Offline', friendLastSeenNow:'now', friendLastSeenMinutes:'{n} min ago', friendLastSeenHours:'{n} h ago', friendLastSeenDays:'{n} days ago', friendNotificationKicker:'FRIEND REQUEST', friendNotificationCopy:'wants to be your friend.', friendViewProfile:'View profile', friendDelete:'Remove', friendDeleteTitle:'Remove friend?', friendDeleteCopy:'Are you sure you want to remove', friendDeleteConfirm:'Yes, remove', friendDeleteCancel:'Keep friend', friendProfileTitle:'Friend profile', friendNoRequests:'You have no friend requests.', friendNoFriends:'You have no friends yet.', friendAccept:'Accept', friendReject:'Decline', friendSearchKicker:'ADD FRIEND', friendSearchTitle:'Find by ID', friendSearchCopy:'Enter the exact player ID you want to add.', friendEnterId:'Enter an ID.', friendSearching:'Searching…', friendNotFound:'No player was found with this ID.', friendRequestSent:'Friend request sent.', friendSent:'Sent', friendThisIsYou:'It’s you', friendBackendError:'The online service is unavailable right now.', friendErr_already_friends:'You are already friends.', friendErr_request_pending:'That request was already sent.', friendErr_incoming_pending:'That player already sent you a request.', friendErr_cannot_add_self:'You cannot add yourself.', friendErr_sender_not_found:'Your online profile is not synchronized.', friendErr_generic:'The request could not be sent.', search:'Search', friendsClose:'Close', friendsCloseSearch:'Close', deleteAccountKicker:'ACCOUNT', deleteAccountTitle:'Delete account', deleteAccountCopy:'This is permanent: you will lose your ID, name, progress, local history and all friend data.', deleteAccountBtn:'Delete account permanently', deleteAccountCancel:'Keep my account', deleteAccountDeleting:'Deleting your data…', deleteAccountError:'The account could not be deleted. Nothing local was lost.', deleteAccountBackendError:'The online service is unavailable right now.', deleteAccountConfirmTitle:'Are you sure you want to continue?', deleteAccountConfirmCopy:'This cannot be undone. After deletion, a new player ID will be generated automatically.', deleteAccountCopyPreview:'Your ID, name, progress, local history and friends will be deleted.', settingsKicker:'SETTINGS', settingsTitle:'Preferences', soundLabel:'Sounds', soundCopy:'Audio feedback for actions.', volumeLabel:'Volume', animationsLabel:'Animations', animationsCopy:'Full animations; OFF keeps only subtle transitions.', languageLabel:'Language', languageCopy:'Choose interface language.', done:'Done',
+    friendsKicker:'FRIENDS', friendsTitle:'Friends', friendsCopy:'Connect with players, see who is online and manage requests.', friendsRequestsTitle:'Incoming requests', friendsListTitle:'My list', friendsSummaryCountLabel:'Friends', friendsRequestsCountLabel:'Requests', friendsOnlineLabel:'online', friendAdd:'Add', friendOnline:'Online', friendOffline:'Offline', friendLastSeenNow:'now', friendLastSeenMinutes:'{n} min ago', friendLastSeenHours:'{n} h ago', friendLastSeenDays:'{n} days ago', friendNotificationKicker:'FRIEND REQUEST', friendNotificationCopy:'wants to be your friend.', friendViewProfile:'View profile', friendAccepted:'Friends', friendIncoming:'Incoming request', friendDelete:'Remove', friendDeleteTitle:'Remove friend?', friendDeleteCopy:'Are you sure you want to remove', friendDeleteConfirm:'Yes, remove', friendDeleteCancel:'Keep friend', friendProfileTitle:'Friend profile', friendNoRequests:'You have no friend requests.', friendNoFriends:'You have no friends yet.', friendAccept:'Accept', friendReject:'Decline', friendSearchKicker:'ADD FRIEND', friendSearchTitle:'Find by ID', friendSearchCopy:'Enter the exact player ID you want to add.', friendEnterId:'Enter an ID.', friendSearching:'Searching…', friendNotFound:'No player was found with this ID.', friendRequestSent:'Friend request sent.', friendSent:'Sent', friendThisIsYou:'It’s you', friendProfileKicker:'FRIEND', friendProfileCopy:'Online profile of this friend.', friendProfileStatsTitle:'Statistics', friendProfileStatsCopy:'Summary of bot matches.', friendProfileRecentTitle:'Last 3 matches', friendProfileRecentCopy:'Only bot matches are shown for now.', friendProfileNameLabel:'Name', friendProfileIdLabel:'Player ID', friendProfileNoMatches:'No bot matches yet.', friendProfileLoading:'Loading profile…', friendProfileError:'The profile could not be loaded.', friendThisIsYou:'It’s you', friendBackendError:'The online service is unavailable right now.', friendErr_already_friends:'You are already friends.', friendErr_request_pending:'That request was already sent.', friendErr_incoming_pending:'That player already sent you a request.', friendErr_cannot_add_self:'You cannot add yourself.', friendErr_sender_not_found:'Your online profile is not synchronized.', friendErr_generic:'The request could not be sent.', search:'Search', friendsClose:'Close', friendsCloseSearch:'Close', deleteAccountKicker:'ACCOUNT', deleteAccountTitle:'Delete account', deleteAccountCopy:'This is permanent: you will lose your ID, name, progress, local history and all friend data.', deleteAccountBtn:'Delete account permanently', deleteAccountCancel:'Keep my account', deleteAccountDeleting:'Deleting your data…', deleteAccountError:'The account could not be deleted. Nothing local was lost.', deleteAccountBackendError:'The online service is unavailable right now.', deleteAccountConfirmTitle:'Are you sure you want to continue?', deleteAccountConfirmCopy:'This cannot be undone. After deletion, a new player ID will be generated automatically.', deleteAccountCopyPreview:'Your ID, name, progress, local history and friends will be deleted.', settingsKicker:'SETTINGS', settingsTitle:'Preferences', soundLabel:'Sounds', soundCopy:'Audio feedback for actions.', volumeLabel:'Volume', animationsLabel:'Animations', animationsCopy:'Full animations; OFF keeps only subtle transitions.', languageLabel:'Language', languageCopy:'Choose interface language.', done:'Done',
     profileKicker:'PROFILE', profileTitle:'My profile', profileCopy:'Your name and ID are stored locally on this device.', profileNameLabel:'Name', profileIdLabel:'Player ID', copyId:'Copy', copiedId:'Copied', avatarSectionTitle:'Profile picture', avatarSectionCopy:'Choose an avatar.', avatarUploadTitle:'Custom image', avatarUploadCopy:'Choose an image from your device.', profileStatsTitle:'Statistics', profileStatsCopy:'Summary of available matches.', profileWinRateLabel:'Win rate', profile12hLabel:'Matches in the last 12h', profileTotalLabel:'Recorded matches', profileRecentTitle:'Last 3 matches', profileRecentCopy:'For now, bot matches are shown here.', profileNoMatches:'No matches available yet.', profileWin:'Win', profileLoss:'Loss', avatarTemplate:'Avatar', saveProfile:'Save', closeProfile:'Close', profileMenu:'Profile',
     historyKicker:'MATCH HISTORY', historyTitleFull:'Match logs', historyCopy:'See results and a summary of each match.', close:'Close', emptyHistory:'No finished matches yet.', botMode:'BOT', playerMode:'PLAYER', watch:'Watch', soon:'Coming soon', opponentBot:'Bot', resultYou:'You', resultBot:'Bot', draw:'Draw', dateNow:'now', details:'View match flow',
     gameOverKicker:'MATCH OVER', gameOverDraw:'Draw', gameOverWin:'You won the match', gameOverLoss:'The bot won the match', gameOverCopy:'Final score includes captured cards and active tables.', menu:'Menu', rematch:'Play again', you:'You', abandoned:'Abandoned', pauseKicker:'MATCH PAUSED', pauseTitle:'You can rejoin this match.', pauseCopy:'The bot is waiting. If you do not return in time, the match is declared a loss.', rejoin:'Rejoin match', abandon:'Abandon', seconds:'sec', pauseExpired:'Time expired. The match was declared a loss.', pauseAbandoned:'You abandoned the match. The win was awarded to the opponent.', pauseSaved:'The match has been paused.', leaveMatch:'Leave match',
@@ -934,7 +1019,7 @@ function applyLanguage() {
     menuTitle:'menuTitle', menuHeroTitle:'menuHeroTitle', menuHeroCopy:'menuHeroCopy', menuPill:'menuPill', menuVersion:'menuVersion',
     modeHistoryKicker:'historyKicker', modeHistoryTitle:'historyTitle', modeHistoryCopy:'historyCopyMode', openHistoryBtn:'viewLogs',
     playerRailLabel:'you', opponentRailLabel:'opponentBot', scorePileCaption:'pile', tableLabel:'table', opponentLabel:'opponent', playerHandLabel:'yourHand', restartMatchBtn:'newGame', playerTableauLabel:'playerTableauLabel', opponentTableauLabel:'opponentTableauLabel', playerTableauActive:'playerTableauActive', opponentTableauActive:'opponentTableauActive',
-    friendsKicker:'friendsKicker', friendsTitle:'friendsTitle', friendsCopy:'friendsCopy', friendProfileTitle:'friendProfileTitle', closeFriendProfileBtn:'friendsClose', friendDeleteTitle:'friendDeleteTitle', friendDeleteCopy:'friendDeleteCopy', friendDeleteConfirm:'friendDeleteConfirm', friendDeleteCancel:'friendDeleteCancel', closeDeleteFriendBtn:'friendDeleteCancel', friendsRequestsTitle:'friendsRequestsTitle', friendsListTitle:'friendsListTitle', friendsSummaryCountLabel:'friendsSummaryCountLabel', friendsRequestsCountLabel:'friendsRequestsCountLabel', friendsOnlineLabel:'friendsOnlineLabel', addFriendBtn:'friendAdd', closeFriendsBtn:'friendsClose', friendSearchKicker:'friendSearchKicker', friendSearchTitle:'friendSearchTitle', friendSearchCopy:'friendSearchCopy', friendSearchBtn:'search', closeFriendSearchBtn:'friendsCloseSearch',
+    friendsKicker:'friendsKicker', friendsTitle:'friendsTitle', friendsCopy:'friendsCopy', friendProfileKicker:'friendProfileKicker', friendProfileTitle:'friendProfileTitle', friendProfileCopy:'friendProfileCopy', friendProfileNameLabel:'friendProfileNameLabel', friendProfileIdLabel:'friendProfileIdLabel', friendProfileStatsTitle:'friendProfileStatsTitle', friendProfileStatsCopy:'friendProfileStatsCopy', friendProfileWinRateLabel:'profileWinRateLabel', friendProfile12hLabel:'profile12hLabel', friendProfileTotalLabel:'profileTotalLabel', friendProfileRecentTitle:'friendProfileRecentTitle', friendProfileRecentCopy:'friendProfileRecentCopy', closeFriendProfileBtn:'friendsClose', friendDeleteTitle:'friendDeleteTitle', friendDeleteCopy:'friendDeleteCopy', friendDeleteConfirm:'friendDeleteConfirm', friendDeleteCancel:'friendDeleteCancel', closeDeleteFriendBtn:'friendDeleteCancel', friendsRequestsTitle:'friendsRequestsTitle', friendsListTitle:'friendsListTitle', friendsSummaryCountLabel:'friendsSummaryCountLabel', friendsRequestsCountLabel:'friendsRequestsCountLabel', friendsOnlineLabel:'friendsOnlineLabel', addFriendBtn:'friendAdd', closeFriendsBtn:'friendsClose', friendSearchKicker:'friendSearchKicker', friendSearchTitle:'friendSearchTitle', friendSearchCopy:'friendSearchCopy', friendSearchBtn:'search', closeFriendSearchBtn:'friendsCloseSearch',
     rulesKicker:'rulesKicker', rulesTitle:'rulesTitle', ruleCaptureTitle:'ruleCaptureTitle', ruleCaptureCopy:'ruleCaptureCopy', ruleAceTitle:'ruleAceTitle', ruleAceCopy:'ruleAceCopy', ruleStackTitle:'ruleStackTitle', ruleStackCopy:'ruleStackCopy', rulePointsTitle:'rulePointsTitle', rulePointsCopy:'rulePointsCopy', ruleTableauTitle:'ruleTableauTitle', ruleTableauCopy:'ruleTableauCopy', ruleLastHandTitle:'ruleLastHandTitle', ruleLastHandCopy:'ruleLastHandCopy', closeRulesBtn:'understood',
     captureKicker:'captureKicker', captureTitle:'captureTitle', cancelCaptureBtn:'cancel', captureConfirmBtn:'takeCards', tableauKicker:'tableauKicker', tableauTitle:'tableauTitle', stackKicker:'stackKicker', stackTitle:'stackTitle', cancelStackBtn:'stackCancel', settingsKicker:'settingsKicker', settingsTitle:'settingsTitle', settingsLanguageLabel:'languageLabel', settingsLanguageCopy:'languageCopy', settingsAnimationsLabel:'animationsLabel', settingsAnimationsCopy:'animationsCopy', deleteAccountKicker:'deleteAccountKicker', deleteAccountTitle:'deleteAccountTitle', deleteAccountCopy:'deleteAccountCopy', deleteAccountBtn:'deleteAccountBtn', cancelDeleteAccountBtn:'deleteAccountCancel', deleteAccountConfirmTitle:'deleteAccountConfirmTitle', deleteAccountConfirmCopy:'deleteAccountConfirmCopy', deleteAccountCopyPreview:'deleteAccountCopyPreview', confirmDeleteAccountBtn:'deleteAccountBtn', closeSettingsBtn:'done',
     historyKicker:'historyKicker', historyTitle:'historyTitleFull', historyCopy:'historyCopy', closeHistoryBtn:'close', profileKicker:'profileKicker', profileTitle:'profileTitle', profileCopy:'profileCopy', profileNameLabel:'profileNameLabel', profileIdLabel:'profileIdLabel', avatarSectionTitle:'avatarSectionTitle', avatarSectionCopy:'avatarSectionCopy', avatarUploadTitle:'avatarUploadTitle', avatarUploadCopy:'avatarUploadCopy', profileStatsTitle:'profileStatsTitle', profileStatsCopy:'profileStatsCopy', profileWinRateLabel:'profileWinRateLabel', profile12hLabel:'profile12hLabel', profileTotalLabel:'profileTotalLabel', profileRecentTitle:'profileRecentTitle', profileRecentCopy:'profileRecentCopy',
@@ -1763,6 +1848,14 @@ function recordBattleResult() {
   };
   battleHistory = [entry, ...battleHistory].slice(0, 8);
   saveBattleHistory();
+  void tabinetRpc('tabinet_record_bot_match', {
+    p_player_id: profile.id,
+    p_device_token: getFriendsDeviceToken(),
+    p_difficulty: state.difficulty,
+    p_player_score: state.score,
+    p_bot_score: state.opponentScore,
+    p_result: entry.result
+  }).catch(() => {});
 }
 
 function endGame() {
@@ -2192,6 +2285,31 @@ $('addFriendBtn').addEventListener('click', () => { playTone('button'); openFrie
 $('closeFriendSearchBtn').addEventListener('click', () => { playTone('button'); $('friendSearchDialog').close(); forceModalCleanup(); });
 $('friendSearchBtn').addEventListener('click', () => { playTone('button'); searchFriendById(); });
 $('friendSearchInput').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); searchFriendById(); } });
+$('friendSearchResult').addEventListener('click', event => {
+  const closeBtn = event.target.closest('.friend-search-close-result');
+  const addBtn = event.target.closest('.friend-search-add-result');
+  const box = $('friendSearchResult');
+  if (closeBtn) { box.innerHTML=''; box.classList.add('hidden'); return; }
+  if (addBtn && !addBtn.disabled) {
+    addBtn.disabled = true;
+    void tabinetRpc('tabinet_send_friend_request', {
+      p_from_player_id:profile.id,
+      p_to_player_id:addBtn.dataset.playerId,
+      p_device_token:getFriendsDeviceToken()
+    }).then(send => {
+      if (send && send.ok) {
+        $('friendSearchStatus').textContent = t('friendRequestSent');
+        if (window.__tabinetFriendSearchProfile) void renderFriendSearchCard(window.__tabinetFriendSearchProfile);
+      } else {
+        $('friendSearchStatus').textContent = t('friendErr_' + (send && send.error || 'generic'));
+        addBtn.disabled = false;
+      }
+    }).catch(() => {
+      $('friendSearchStatus').textContent=t('friendBackendError');
+      addBtn.disabled=false;
+    });
+  }
+});
 $('friendRequestsList').addEventListener('click', event => {
   const accept=event.target.closest('.friend-accept'), reject=event.target.closest('.friend-reject');
   if(accept){playTone('button');void respondToFriendRequest(accept.dataset.requestId,true);}
@@ -2263,7 +2381,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=077-account').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=078-friend-profile').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

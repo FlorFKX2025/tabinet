@@ -2398,7 +2398,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=078-friend-profile').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=079-friend-profile-modal').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

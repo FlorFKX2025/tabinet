@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#071b13">
   <meta name="description" content="Tabinet — joc de cărți românesc, direct în browser.">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/icon.svg?v=076-modal-cleanup4" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=076-modal-cleanup4">
+  <link rel="icon" href="./icons/icon.svg?v=076-friends1" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=076-friends1">
   <title>Tabinet • v0.7.6</title>
 <script>
   (function () {
-    const RESET_KEY = 'tabinet-pages-reset-076-modal-cleanup4';
+    const RESET_KEY = 'tabinet-pages-reset-076-friends1';
     if (!('serviceWorker' in navigator) || !('caches' in window)) return;
     if (localStorage.getItem(RESET_KEY) === '1') return;
     localStorage.setItem(RESET_KEY, '1');
@@ -82,10 +82,11 @@
             <span><strong>Setări</strong><small>Sunete și animații</small></span>
             <span class="chevron">›</span>
           </button>
-          <button class="menu-action disabled-action" id="realPlayerBtn" type="button" disabled>
-            <span class="menu-action-icon">♟</span>
-            <span><strong>Player real</strong><small>În curând</small></span>
-            <span class="coming-soon-badge">ÎN CURÂND</span>
+          <button class="menu-action" id="friendsBtn" type="button">
+            <span class="menu-action-icon">👥</span>
+            <span><strong id="friendsMenuTitle">Prieteni</strong><small id="friendsMenuCopy">Adaugă și gestionează prietenii</small></span>
+            <span class="friends-badge hidden" id="friendsPendingBadge">0</span>
+            <span class="chevron">›</span>
           </button>
           <button class="menu-action" id="rulesMenuBtn" type="button">
             <span class="menu-action-icon">?</span>
@@ -325,6 +326,38 @@
   </dialog>
 
   <!-- Rules -->
+  <dialog id="friendsDialog" class="choice-dialog friends-dialog" tabindex="-1">
+    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+    <div class="dialog-kicker" id="friendsKicker">PRIETENI</div>
+    <div class="friends-head">
+      <div><h2 id="friendsTitle">Prieteni</h2><p class="dialog-copy" id="friendsCopy">Adaugă prieteni după ID și gestionează cererile.</p></div>
+      <button class="secondary tiny-btn" id="addFriendBtn" type="button">＋ Adaugă</button>
+    </div>
+    <section class="friends-section">
+      <div class="friends-section-head"><strong id="friendsRequestsTitle">Cereri primite</strong><span class="friends-section-count" id="friendsRequestsCount">0</span></div>
+      <div id="friendRequestsList" class="friend-requests-list"></div>
+    </section>
+    <section class="friends-section">
+      <div class="friends-section-head"><strong id="friendsListTitle">Lista mea</strong><span class="friends-section-count" id="friendsListCount">0</span></div>
+      <div id="friendsList" class="friends-list"></div>
+    </section>
+    <div class="dialog-actions"><button class="primary" id="closeFriendsBtn" type="button">Închide</button></div>
+  </dialog>
+
+  <dialog id="friendSearchDialog" class="choice-dialog friend-search-dialog" tabindex="-1">
+    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+    <div class="dialog-kicker" id="friendSearchKicker">ADĂUGĂ PRIETEN</div>
+    <h2 id="friendSearchTitle">Caută după ID</h2>
+    <p class="dialog-copy" id="friendSearchCopy">Introdu ID-ul exact al jucătorului pe care vrei să-l adaugi.</p>
+    <div class="friend-search-row">
+      <input id="friendSearchInput" class="friend-search-input" type="text" maxlength="12" autocomplete="off" placeholder="TB-XXXXXX">
+      <button class="primary" id="friendSearchBtn" type="button">Caută</button>
+    </div>
+    <div id="friendSearchStatus" class="friend-search-status" aria-live="polite"></div>
+    <div id="friendSearchResult" class="friend-search-result hidden"></div>
+    <div class="dialog-actions"><button class="secondary" id="closeFriendSearchBtn" type="button">Închide</button></div>
+  </dialog>
+
   <dialog id="rulesDialog" class="choice-dialog rules-dialog" tabindex="-1">
     <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
     <div class="dialog-kicker" id="rulesKicker">REGULI</div>
@@ -477,7 +510,8 @@
     </div>
   </dialog>
 
-  <script src="./rules.js?v=076-modal-cleanup4" defer></script>
-  <script src="./app.js?v=076-modal-cleanup4" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="./rules.js?v=076-friends1" defer></script>
+  <script src="./app.js?v=076-friends1" defer></script>
 </body>
 </html>

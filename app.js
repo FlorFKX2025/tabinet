@@ -429,6 +429,19 @@ function playTone(kind = 'click') {
       nextHand: [{f:280, to:315, d:0, l:.08, w:'triangle', a:.8}, {f:400, to:450, d:.09, l:.09, w:'sine', a:.9}, {f:560, to:650, d:.18, l:.13, w:'sine', a:1}],
       shuffle: [{f:190, to:260, d:0, l:.11, w:'triangle', a:.7}, {f:310, to:390, d:.12, l:.11, w:'triangle', a:.8}, {f:240, to:330, d:.24, l:.11, w:'triangle', a:.75}, {f:360, to:480, d:.36, l:.10, w:'sine', a:.85}],
       success: [{f:520, to:610, d:0, l:.09, w:'sine', a:.9}, {f:700, to:830, d:.09, l:.12, w:'sine', a:1}],
+      victory: [
+        {f:523.25, to:523.25, d:0, l:.13, w:'sine', a:.9},
+        {f:659.25, to:659.25, d:.12, l:.13, w:'sine', a:1},
+        {f:783.99, to:783.99, d:.24, l:.15, w:'sine', a:1.08},
+        {f:1046.5, to:1046.5, d:.40, l:.22, w:'triangle', a:1.12},
+        {f:1318.5, to:1318.5, d:.56, l:.30, w:'sine', a:1.0},
+      ],
+      defeat: [
+        {f:392.0, to:360.0, d:0, l:.18, w:'sine', a:.85},
+        {f:329.63, to:300.0, d:.17, l:.19, w:'triangle', a:.8},
+        {f:261.63, to:235.0, d:.35, l:.22, w:'sine', a:.78},
+        {f:196.0, to:174.0, d:.56, l:.32, w:'sine', a:.72},
+      ],
       gameover: [{f:430, to:380, d:0, l:.14, w:'triangle', a:.85}, {f:350, to:300, d:.16, l:.14, w:'sine', a:.8}, {f:560, to:720, d:.32, l:.22, w:'sine', a:1.1}],
     };
     const notes = patterns[kind] || patterns.button;
@@ -1501,7 +1514,8 @@ function endGame() {
   $('gameOverTitle').textContent = state.score === state.opponentScore ? t('gameOverDraw') : state.score > state.opponentScore ? t('gameOverWin') : t('gameOverLoss');
   $('gameOverCopy').textContent = t('gameOverCopy');
   $('gameOverDialog').showModal();
-  playTone('gameover');
+  const result = state.score === state.opponentScore ? 'draw' : state.score > state.opponentScore ? 'victory' : 'defeat';
+  playTone(result);
 }
 
 async function startMatch(difficulty = state.difficulty) {

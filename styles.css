@@ -2504,3 +2504,43 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   .pvp-abandon-inner{grid-template-columns:1fr auto;gap:10px;padding:10px 12px}
   .pvp-friend-actions{justify-content:flex-start}
 }
+
+
+/* v0.8.5 mobile dialog/input interaction fix */
+.friend-search-input {
+  font-size: 16px;
+}
+.friend-profile-scroll {
+  min-height: 0;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 760px) {
+  .friend-search-input,
+  .profile-dialog input,
+  .settings-dialog input,
+  .settings-dialog select {
+    font-size: 16px !important;
+  }
+
+  .friend-profile-dialog,
+  .friend-profile-scroll,
+  .history-dialog {
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .history-dialog {
+    max-height: calc(100dvh - 20px) !important;
+    overflow-y: auto !important;
+  }
+
+  .friend-profile-dialog {
+    max-height: calc(100dvh - 14px) !important;
+  }
+
+  .friend-profile-scroll {
+    max-height: calc(100dvh - 22px) !important;
+    overflow-y: auto !important;
+  }
+}

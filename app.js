@@ -98,6 +98,30 @@ let pvpAbandonTimer = null;
 let pvpActionBusy = false;
 let presenceTimer = null;
 let currentPresence = null;
+
+const trainingSession = {
+  active:false,
+  phase:'idle',
+  lesson:0,
+  answered:false,
+  targetCardId:null,
+  targetLabel:'',
+  coachSpeech:'',
+  coachTitle:'Tibi',
+  pendingAdvice:null,
+  savedPausedMatch:null,
+  completed:false,
+  transitionTimer:null
+};
+
+const trainingScenarios = [
+  {ruleKey:'training1Title',coachKey:'training1Coach',explainKey:'training1Explain',table:['3♣','4♦'],hand:['7♥','9♠','2♣','A♥','K♣'],opponentCards:6,target:'7♥'},
+  {ruleKey:'training2Title',coachKey:'training2Coach',explainKey:'training2Explain',table:['10♠','A♥'],hand:['A♣','7♦','3♣','Q♥','9♠'],opponentCards:5,target:'A♣'},
+  {ruleKey:'training3Title',coachKey:'training3Coach',explainKey:'training3Explain',table:['7♣','7♦'],hand:['7♥','9♠','4♣','A♦','2♣'],opponentCards:4,target:'7♥'},
+  {ruleKey:'training4Title',coachKey:'training4Coach',explainKey:'training4Explain',table:['2♦'],hand:['2♣','6♠','Q♥','10♣','7♦'],opponentCards:6,target:'2♣'},
+  {ruleKey:'training5Title',coachKey:'training5Coach',explainKey:'training5Explain',table:['9♣'],hand:['9♦','A♥','10♦','K♣','2♥'],opponentCards:5,target:'9♦'},
+  {ruleKey:'training6Title',coachKey:'training6Coach',explainKey:'training6Explain',table:['A♥','9♣','K♦'],hand:['A♠','4♣','J♥','6♦','Q♠'],opponentCards:2,target:'A♠'}
+];
 window.__tabinetPvpDashboard = { incoming_invites: [], outgoing_invites: [], queue_waiting: false, active_match: null };
 
 function getFriendsDeviceToken() {
@@ -802,8 +826,154 @@ function answerTraining(index){
   $('trainingCoachSpeech').textContent=correct?t('trainingCoachCorrect'):t('trainingCoachWrong');
 }
 function showTrainingHint(){$('trainingHint').textContent=t(trainingLessons[trainingState.lesson].hintKey);}
-function openTraining(){const d=$('trainingDialog');if(!d)return;trainingState.lesson=0;trainingState.score=0;trainingState.answered=false;setPresence('training');renderTraining();d.showModal();}
-function closeTraining(){if($('trainingDialog')?.open)$('trainingDialog').close();setPresence('lobby');forceModalCleanup();}
+function trainingCardFromLabel(label,id){
+  const text=String(label||'');
+  const symbol=text.slice(-1);
+  const rankKey=text.slice(0,-1);
+  const suit=SUITS.find(item=>item.symbol===symbol)||SUITS[0];
+  const rank=RANKS.find(item=>item.key===rankKey)||RANKS[0];
+  return {id:Number(id),suit:suit.key,symbol:suit.symbol,red:suit.red,rank:rank.key,value:rank.value};
+}
+function trainingScenarioDeck(count=18){return createDeck().slice(0,Math.max(0,Math.min(52,Number(count)||18)));}
+function trainingScenarioTable(labels,lesson){return labels.map((label,index)=>({id:8000+(lesson*20)+index,cards:[trainingCardFromLabel(label,8100+(lesson*20)+index)]}));}
+function renderTrainingGameCoach(){
+  const coach=$('trainingGameCoach'),guide=$('trainingLessonGuide');
+  if(!coach||!guide)return;
+  const active=Boolean(trainingSession.active),tutorial=active&&trainingSession.phase==='tutorial',match=active&&trainingSession.phase==='match';
+  coach.classList.toggle('hidden',!active);
+  guide.classList.toggle('hidden',!tutorial);
+  document.body.classList.toggle('training-active',active);
+  document.body.classList.toggle('training-tutorial-active',tutorial);
+  document.body.classList.toggle('training-match-active',match);
+  const phase=$('trainingCoachGamePhase'),title=$('trainingCoachGameTitle'),speech=$('trainingCoachGameSpeech'),step=$('trainingLessonStep'),rule=$('trainingLessonRule'),prompt=$('trainingLessonPrompt'),tip=$('trainingLessonTip'),exit=$('trainingGameCoachCloseBtn');
+  if(!active)return;
+  if(phase)phase.textContent=tutorial?t('trainingCoachGuide'):t('trainingCoachLive');
+  if(title)title.textContent=trainingSession.coachTitle||'Tibi';
+  if(speech)speech.textContent=trainingSession.coachSpeech||'';
+  if(exit)exit.textContent=t('trainingExit');
+  if(tutorial){
+    const s=trainingScenarios[trainingSession.lesson];
+    if(step)step.textContent=t('trainingStep').replace('{n}',String(trainingSession.lesson+1)).replace('{total}',String(trainingScenarios.length));
+    if(rule)rule.textContent=t(s.ruleKey);
+    if(prompt)prompt.textContent=t('trainingCoachPlay',{card:s.target});
+    if(tip)tip.textContent=t('trainingLessonTip');
+  }
+}
+function trainingBestMove(tableStacks,hand){
+  const totalTable=tableStacks.reduce((sum,stack)=>sum+(Array.isArray(stack.cards)?stack.cards.length:0),0);
+  let best={score:0,card:null,captured:[],madeTable:false,kind:'place'};
+  for(const card of hand){
+    const groups=rules.allCaptureGroupsForStacks(card,tableStacks);
+    if(!groups.length)continue;
+    const selections=rules.findCaptureSelections(groups);
+    const candidates=selections.length?selections:groups.map(group=>[group]);
+    for(const selection of candidates){
+      const captured=rules.flattenSelection(selection);
+      const madeTable=captured.length===totalTable&&totalTable>0;
+      const marker=madeTable?chooseBotTableauMarker(captured):null;
+      const score=rules.scoreCapture(captured,madeTable,marker,card);
+      if(score>best.score)best={score,card,captured,madeTable,kind:'capture'};
+    }
+  }
+  return best;
+}
+function trainingPrepareMoveAdvice(card){
+  if(!trainingSession.active||trainingSession.phase!=='match'||state.turn!=='player')return;
+  trainingSession.pendingAdvice={cardId:card.id,cardLabel:cardLabel(card),best:trainingBestMove(pvpClone(state.tableStacks),pvpClone(state.hand)),chosenGain:null,chosenCaptured:[],requiresTableau:false};
+}
+function trainingSetChosenMove(card,captured=[],madeTable=false,kind='place'){
+  if(!trainingSession.pendingAdvice)return;
+  trainingSession.pendingAdvice.chosenGain=rules.scoreCapture(captured,madeTable,null,card);
+  trainingSession.pendingAdvice.chosenCaptured=pvpClone(captured);
+  trainingSession.pendingAdvice.requiresTableau=Boolean(madeTable);
+  trainingSession.pendingAdvice.kind=kind;
+}
+function trainingCoachAfterMove(){
+  if(!trainingSession.active||trainingSession.phase!=='match'||!trainingSession.pendingAdvice)return;
+  const advice=trainingSession.pendingAdvice;
+  const current=Number(advice.chosenGain??0);
+  const best=advice.best;
+  let speech;
+  if(!best?.card||best.score<=current){
+    speech=t('trainingCoachGood',{card:advice.cardLabel});
+  }else{
+    const bestGroup=best.captured.map(cardLabel).join(' + ');
+    const points=String(best.score);
+    speech=(String(best.card?.id)===String(advice.cardId)
+      ? t('trainingCoachSameCardBetter',{card:advice.cardLabel,group:bestGroup,points,word:pointsWord(best.score)})
+      : t('trainingCoachBetter',{card:advice.cardLabel,best:cardLabel(best.card),group:bestGroup,points,word:pointsWord(best.score)}));
+  }
+  trainingSession.coachSpeech=speech;
+  trainingSession.pendingAdvice=null;
+  renderTrainingGameCoach();
+}
+function trainingTutorialCardClick(card){
+  if(!trainingSession.active||trainingSession.phase!=='tutorial'||trainingSession.answered)return;
+  const scenario=trainingScenarios[trainingSession.lesson],chosen=cardLabel(card);
+  if(chosen!==scenario.target){
+    trainingSession.coachSpeech=t('trainingCoachWrongCard',{card:scenario.target});
+    renderTrainingGameCoach();
+    const el=document.querySelector('#playerHand .card[data-id="'+card.id+'"]');
+    if(el){el.classList.remove('training-card-wrong');void el.offsetWidth;el.classList.add('training-card-wrong');window.setTimeout(()=>el.classList.remove('training-card-wrong'),420);}
+    playTone('button');
+    return;
+  }
+  trainingSession.answered=true;trainingSession.targetCardId=card.id;
+  trainingSession.coachSpeech=t(scenario.explainKey)+' '+t('trainingCoachNext');
+  renderTrainingGameCoach();
+  document.querySelectorAll('#playerHand .card').forEach(btn=>{btn.disabled=true;});
+  const el=document.querySelector('#playerHand .card[data-id="'+card.id+'"]'),rect=el?.getBoundingClientRect()||null;
+  if(el)el.classList.add('training-card-picked');
+  if(rect&&$('tableZone'))flyCard(card,rect,$('tableZone'),{kind:'capture',duration:500,scale:.52,rotate:-4});
+  playTone('capture');
+  if(trainingSession.transitionTimer)clearTimeout(trainingSession.transitionTimer);
+  trainingSession.transitionTimer=window.setTimeout(()=>advanceTrainingTutorial(),1050);
+}
+function setupTrainingScenario(index){
+  const scenario=trainingScenarios[index];
+  trainingSession.lesson=index;trainingSession.answered=false;trainingSession.targetLabel=scenario.target;trainingSession.targetCardId=null;
+  trainingSession.coachSpeech=t(scenario.coachKey)+' '+t('trainingCoachPlay',{card:scenario.target});
+  state.nextStackId=9000+(index*20);state.deck=trainingScenarioDeck(18);state.tableStacks=trainingScenarioTable(scenario.table,index);
+  state.hand=scenario.hand.map((label,i)=>trainingCardFromLabel(label,9200+(index*20)+i));
+  state.opponentHand=Array.from({length:Number(scenario.opponentCards||6)},(_,i)=>({id:9400+(index*20)+i}));
+  state.round=1;state.lastDeal=false;state.score=0;state.opponentScore=0;
+  state.captured={player:[],opponent:[]};state.played={player:[],opponent:[]};state.tableauMarkers={player:[],opponent:[]};state.lastTaker=null;
+  state.pendingPlay=null;state.pendingCaptureGroups=[];state.pendingSelection=[];state.pendingStackCard=null;state.pendingPlaySourceRect=null;state.waitingForTableau=false;
+  state.dealing=false;state.animating=false;state.visualAnimation=null;state.matchEvents=[];state.replayFrames=[];state.replayLastVersion=0;state.turn='player';
+  state.message=t('trainingScenarioReady',{card:scenario.target});renderGame();
+}
+function advanceTrainingTutorial(){
+  if(!trainingSession.active||trainingSession.phase!=='tutorial')return;
+  if(trainingSession.lesson<trainingScenarios.length-1){setupTrainingScenario(trainingSession.lesson+1);playTone('nextHand');return;}
+  trainingSession.phase='match';trainingSession.completed=false;trainingSession.pendingAdvice=null;trainingSession.coachSpeech=t('trainingMatchIntro');renderTrainingGameCoach();
+  window.setTimeout(()=>{if(trainingSession.active)void startTrainingFinalMatch();},500);
+}
+async function startTrainingFinalMatch(){
+  if(!trainingSession.active)return;
+  trainingSession.phase='match';trainingSession.completed=false;trainingSession.pendingAdvice=null;trainingSession.coachSpeech=t('trainingMatchCoachStart');renderTrainingGameCoach();state.selectedMode='bot';
+  await startMatch('easy');
+  if(trainingSession.active){setPresence('training',true);trainingSession.coachSpeech=t('trainingMatchCoachStart');renderTrainingGameCoach();}
+}
+function exitTrainingSession(){
+  if(trainingSession.transitionTimer){clearTimeout(trainingSession.transitionTimer);trainingSession.transitionTimer=null;}
+  const saved=trainingSession.savedPausedMatch;
+  trainingSession.active=false;trainingSession.phase='idle';trainingSession.answered=false;trainingSession.targetCardId=null;trainingSession.pendingAdvice=null;trainingSession.savedPausedMatch=null;trainingSession.completed=false;
+  state.matchToken+=1;state.dealing=false;state.animating=false;state.turn='menu';state.message='';state.visualAnimation=null;state.draggingCardId=null;state.nativeDrag=null;
+  document.body.classList.remove('training-active','training-tutorial-active','training-match-active','dragging-card','player-turn','opponent-turn','game-ended');
+  if($('gameOverDialog')?.open)$('gameOverDialog').close();$('shuffleOverlay')?.classList.add('hidden');showScreen('menuScreen');
+  if(saved&&Number(saved.expiresAt)>Date.now()){savePausedMatch(saved);renderResumeBar();}
+  setPresence('lobby',true);
+}
+function openTraining(){
+  if(trainingSession.transitionTimer){clearTimeout(trainingSession.transitionTimer);trainingSession.transitionTimer=null;}
+  trainingSession.active=true;trainingSession.phase='tutorial';trainingSession.lesson=0;trainingSession.answered=false;trainingSession.completed=false;trainingSession.pendingAdvice=null;
+  trainingSession.savedPausedMatch=pausedMatch?pvpClone(pausedMatch):null;if(pausedMatch)clearPausedMatch();
+  state.selectedMode='bot';state.difficulty='easy';state.matchToken+=1;state.dealing=true;state.round=0;state.deck=[];state.hand=[];state.opponentHand=[];state.tableStacks=[];state.score=0;state.opponentScore=0;state.turn='menu';state.message='';state.matchEvents=[];state.replayFrames=[];state.replayLastVersion=0;
+  $('gameOverDialog')?.close();showScreen('gameScreen');renderGame();
+  const token=state.matchToken;
+  void runShuffleAnimation(token).then(()=>{if(token!==state.matchToken||!trainingSession.active)return;state.dealing=false;setupTrainingScenario(0);setPresence('training',true);});
+}
+function closeTraining(){exitTrainingSession();}
 
 let settings = loadSettings();
 let battleHistory = loadBattleHistory();
@@ -1368,7 +1538,7 @@ const I18N = {
     profileKicker:'PROFIL', profileTitle:'Profilul meu', profileCopy:'Numele și ID-ul tău sunt salvate local pe acest dispozitiv.', profileNameLabel:'Nume', profileIdLabel:'ID jucător', copyId:'Copiază', copiedId:'Copiat', avatarSectionTitle:'Imagine de profil', avatarSectionCopy:'Alege un avatar.', avatarUploadTitle:'Imagine proprie', avatarUploadCopy:'Alege o imagine de pe dispozitiv.', profileStatsTitle:'Statistici', profileStatsCopy:'Rezumatul meciurilor disponibile.', profileWinRateLabel:'Win rate', profile12hLabel:'Meciuri în ultimele 12h', profileTotalLabel:'Meciuri înregistrate', profileRecentTitle:'Ultimele 3 meciuri', profileRecentCopy:'Momentan sunt afișate meciurile cu botul.', profileNoMatches:'Nu există meciuri disponibile încă.', profileWin:'Victorie', profileLoss:'Înfrângere', avatarTemplate:'Avatar', saveProfile:'Salvează', closeProfile:'Închide', profileMenu:'Profil',
     historyKicker:'ISTORIC MECIURI', historyTitleFull:'Log-uri de meciuri', historyCopy:'Vezi rezultatele și rezumatul fiecărei partide.', close:'Închide', emptyHistory:'Niciun meci terminat încă.', botMode:'BOT', playerMode:'PLAYER', watch:'Watch', soon:'În curând', opponentBot:'Bot', resultYou:'Tu', resultBot:'Botul', draw:'Egalitate', dateNow:'acum', details:'Vezi desfășurarea',
     watchDisabled:'Watch este disponibil doar pentru meciurile noi înregistrate după această actualizare.', presenceLobby:'În lobby', presenceMatch:'Într-un meci', presenceMatchmaking:'În matchmaking', presenceTraining:'La antrenament', trainingOpponent:'Adversar', trainingCardsBack:'cărți', trainingCardsInHand:'în mână', trainingCoachCorrect:'Exact! Ai citit masa foarte bine.', trainingCoachWrong:'Mai încearcă. Uită-te la valorile de pe masă și la regulă.', replayTitle:'Vizualizare partidă', replayCopy:'Urmărește fiecare mutare, exact cum a fost înregistrată.', replayPlay:'Redă', replayPause:'Pauză', replayRestart:'Reia de la început', replayClose:'Închide', replaySpeed:'Viteză', replayRemaining:'Rămas:', replayStart:'Partida începe.', replayTable:'MASĂ', replayDeck:'în pachet',
-    trainingLaunch:'Loc de antrenament', trainingKicker:'ANTRENAMENT', trainingTitle:'Învață să joci Tabinet', trainingCopy:'Parcurge regulile pas cu pas și rezolvă mici situații de joc ca să înveți prin practică.', trainingProgress:'Regula {n} din {total}', trainingScore:'Scor: {score}/{total}', trainingPrev:'Înapoi', trainingNext:'Următoarea', trainingFinish:'Gata', trainingHintBtn:'Indiciu', trainingCorrect:'Corect!', trainingWrong:'Nu chiar.',
+    trainingLaunch:'Loc de antrenament', trainingKicker:'ANTRENAMENT', trainingTitle:'Învață să joci Tabinet', trainingGameTitle:'Antrenamentul lui Tibi', trainingMatchTitle:'Meci ghidat', trainingCoachGuide:'GHID', trainingCoachLive:'ASISTENȚĂ LIVE', trainingStep:'REGULA {n}/{total}', trainingCoachPlay:'Joacă {card}.', trainingScenarioReady:'Tibi ți-a pregătit masa. Joacă {card}.', trainingLessonTip:'Cartea evidențiată este cea pe care ți-o cere Tibi.', trainingCoachNext:' Perfect. Trecem la următoarea regulă.', trainingCoachWrongCard:'Nu aceasta. Tibi spune să joci {card}.', trainingMatchIntro:'Ai trecut prin toate regulile. Acum intrăm într-un meci real: joacă normal, iar eu te ajut după fiecare mutare.', trainingMatchCoachStart:'Gata. Acum este un meci real cu botul. Joacă normal; după fiecare mutare îți spun ce putea fi mai bine.', trainingCoachGood:'Bună mutare, {card}. Nu văd o alternativă tactică imediată mai valoroasă.', trainingCoachBetter:'Ai jucat {card}. Mai bună era {best}: {group}, pentru {points} {word}.', trainingCoachSameCardBetter:'Cu {card} puteai alege o captură mai bună: {group}, pentru {points} {word}.', trainingExit:'Ieși din antrenament', trainingRetry:'Reia meciul cu Tibi', trainingRestartMatch:'Repornește meciul ghidat', trainingWinTitle:'Ai terminat antrenamentul!', trainingLossTitle:'Mai încercăm o dată', trainingWinCopy:'Ai câștigat meciul ghidat. Tibi rămâne în colț dacă vrei să joci din nou.', trainingLossCopy:'Meciul ghidat trebuie câștigat. Reia partida și Tibi te ajută după fiecare mutare.', trainingCopy:'Parcurge regulile pas cu pas și rezolvă mici situații de joc ca să înveți prin practică.', trainingProgress:'Regula {n} din {total}', trainingScore:'Scor: {score}/{total}', trainingPrev:'Înapoi', trainingNext:'Următoarea', trainingFinish:'Gata', trainingHintBtn:'Indiciu', trainingCorrect:'Corect!', trainingWrong:'Nu chiar.',
     training1Title:'Captura', training1Copy:'O carte poate captura cărți de pe masă dacă valoarea lor totală se potrivește cu valoarea cărții jucate.', training1Prompt:'Pe masă sunt 3♣ și 4♦. Ce carte le poate captura împreună?', training1Hint:'Caută suma 3 + 4.', training1Explain:'3 + 4 = 7, deci 7 poate captura ambele cărți.',
     training2Title:'Asul', training2Copy:'Asul este flexibil și poate fi folosit ca 1 sau 11, în funcție de combinația care se potrivește.', training2Prompt:'Cum poate conta Asul când încerci o captură?', training2Hint:'Asul are două valori posibile.', training2Explain:'Asul poate conta fie ca 1, fie ca 11.',
     training3Title:'Stiva', training3Copy:'O stivă de 2 sau mai multe cărți devine blocată: poate fi capturată doar cu aceeași valoare/rang.', training3Prompt:'Ai o stivă 7♣ + 7♦. Cu ce o poți captura?', training3Hint:'Stiva nu se desface într-o sumă.', training3Explain:'O stivă de 7 poate fi capturată doar de un 7.',
@@ -1395,7 +1565,7 @@ const I18N = {
     profileKicker:'PROFILE', profileTitle:'My profile', profileCopy:'Your name and ID are stored locally on this device.', profileNameLabel:'Name', profileIdLabel:'Player ID', copyId:'Copy', copiedId:'Copied', avatarSectionTitle:'Profile picture', avatarSectionCopy:'Choose an avatar.', avatarUploadTitle:'Custom image', avatarUploadCopy:'Choose an image from your device.', profileStatsTitle:'Statistics', profileStatsCopy:'Summary of available matches.', profileWinRateLabel:'Win rate', profile12hLabel:'Matches in the last 12h', profileTotalLabel:'Recorded matches', profileRecentTitle:'Last 3 matches', profileRecentCopy:'For now, bot matches are shown here.', profileNoMatches:'No matches available yet.', profileWin:'Win', profileLoss:'Loss', avatarTemplate:'Avatar', saveProfile:'Save', closeProfile:'Close', profileMenu:'Profile',
     historyKicker:'MATCH HISTORY', historyTitleFull:'Match logs', historyCopy:'See results and a summary of each match.', close:'Close', emptyHistory:'No finished matches yet.', botMode:'BOT', playerMode:'PLAYER', watch:'Watch', soon:'Coming soon', opponentBot:'Bot', resultYou:'You', resultBot:'Bot', draw:'Draw', dateNow:'now', details:'View match flow',
     watchDisabled:'Watch is available only for matches recorded after this update.', presenceLobby:'In lobby', presenceMatch:'In a match', presenceMatchmaking:'In matchmaking', presenceTraining:'In training', trainingOpponent:'Opponent', trainingCardsBack:'cards', trainingCardsInHand:'in hand', trainingCoachCorrect:'Exactly! You read the table well.', trainingCoachWrong:'Try again. Look at the values on the table and the rule.', replayTitle:'Match replay', replayCopy:'Watch every move exactly as it was recorded.', replayPlay:'Play', replayPause:'Pause', replayRestart:'Restart', replayClose:'Close', replaySpeed:'Speed', replayRemaining:'Remaining:', replayStart:'The match begins.', replayTable:'TABLE', replayDeck:'in deck',
-    trainingLaunch:'Training ground', trainingKicker:'TRAINING', trainingTitle:'Learn to play Tabinet', trainingCopy:'Go through the rules step by step and solve small game situations to learn by doing.', trainingProgress:'Rule {n} of {total}', trainingScore:'Score: {score}/{total}', trainingPrev:'Back', trainingNext:'Next', trainingFinish:'Finish', trainingHintBtn:'Hint', trainingCorrect:'Correct!', trainingWrong:'Not quite.',
+    trainingLaunch:'Training ground', trainingKicker:'TRAINING', trainingTitle:'Learn to play Tabinet', trainingGameTitle:'Tibi’s training table', trainingMatchTitle:'Guided match', trainingCoachGuide:'GUIDE', trainingCoachLive:'LIVE COACH', trainingStep:'RULE {n}/{total}', trainingCoachPlay:'Play {card}.', trainingScenarioReady:'Tibi has set up the table. Play {card}.', trainingLessonTip:'The highlighted card is the one Tibi asks you to play.', trainingCoachNext:' Perfect. Let’s move to the next rule.', trainingCoachWrongCard:'Not that one. Tibi says to play {card}.', trainingMatchIntro:'You covered all the rules. Now we start a real match: play normally and I’ll help after every move.', trainingMatchCoachStart:'You’re in a real bot match now. Play normally; after each move I’ll tell you what could have been better.', trainingCoachGood:'Good move, {card}. I don’t see a stronger immediate tactical alternative.', trainingCoachBetter:'You played {card}. A better move was {best}: {group}, for {points} {word}.', trainingCoachSameCardBetter:'With {card} you could have chosen a stronger capture: {group}, for {points} {word}.', trainingExit:'Exit training', trainingRetry:'Play the guided match again', trainingRestartMatch:'Restart guided match', trainingWinTitle:'Training complete!', trainingLossTitle:'Let’s try again', trainingWinCopy:'You won the guided match. Tibi stays in the corner if you want another run.', trainingLossCopy:'You need to win the guided match. Replay it and Tibi will help after each move.', trainingCopy:'Go through the rules step by step and solve small game situations to learn by doing.', trainingProgress:'Rule {n} of {total}', trainingScore:'Score: {score}/{total}', trainingPrev:'Back', trainingNext:'Next', trainingFinish:'Finish', trainingHintBtn:'Hint', trainingCorrect:'Correct!', trainingWrong:'Not quite.',
     training1Title:'Capturing', training1Copy:'A card can capture table cards when their total value matches the played card.', training1Prompt:'The table has 3♣ and 4♦. Which card can capture both?', training1Hint:'Look for the sum 3 + 4.', training1Explain:'3 + 4 = 7, so a 7 captures both cards.',
     training2Title:'The Ace', training2Copy:'The Ace is flexible and can count as 1 or 11, depending on the capture.', training2Prompt:'How can an Ace count during a capture?', training2Hint:'The Ace has two possible values.', training2Explain:'An Ace can count as either 1 or 11.',
     training3Title:'The stack', training3Copy:'A stack of 2 or more cards becomes locked: it can only be captured by the same value/rank.', training3Prompt:'You have a 7♣ + 7♦ stack. What can capture it?', training3Hint:'A stack cannot be split into a sum.', training3Explain:'A 7 stack can only be captured by a 7.',
@@ -1474,7 +1644,7 @@ function applyLanguage() {
   const modeCopy = $('modeScreen')?.querySelector('.screen-heading p:last-child'); if(modeCopy) modeCopy.textContent=t('modeCopy');
   const diffHeading = $('difficultyScreen')?.querySelector('.screen-heading .eyebrow'); if(diffHeading) diffHeading.textContent=t('step2');
   const diffCopy = $('difficultyScreen')?.querySelector('.screen-heading p:last-child'); if(diffCopy) diffCopy.textContent=t('difficultyCopy');
-  set('gameTitle',state.selectedMode==='pvp'?'matchPlayer':'matchBot');
+  set('gameTitle',trainingSession.active?(trainingSession.phase==='tutorial'?'trainingGameTitle':'trainingMatchTitle'):(state.selectedMode==='pvp'?'matchPlayer':'matchBot'));
   set('playerRailLabel','you'); if($('opponentRailLabel'))$('opponentRailLabel').textContent=state.selectedMode==='pvp'?pvpOpponentName():t('botLabel'); if($('opponentChipName'))$('opponentChipName').textContent=state.selectedMode==='pvp'?pvpOpponentName():t('botLabel'); if($('botMeta'))$('botMeta').textContent=state.selectedMode==='pvp'?t('pvpPlayerLabel'):difficultyLabel(state.difficulty); set('deckCaption','deckRemaining');
   set('battleLogTitle','battleLogTitle'); set('recentMatches','recentMatches');
   if ($('handHint')) $('handHint').textContent = state.turn === 'player' ? t('tapHint') : t('waitHint');
@@ -1520,6 +1690,7 @@ function presenceLabel(value){
   return labels[value]||labels.lobby;
 }
 function presenceForScreen(id){
+  if(id==='gameScreen'&&trainingSession.active)return 'training';
   if(id==='gameScreen')return 'match';
   if(id==='pvpMatchmakingScreen')return 'matchmaking';
   return 'lobby';
@@ -1846,8 +2017,10 @@ function renderGame() {
   const battleLogTitle = $('battleLogTitle'); if (battleLogTitle) battleLogTitle.textContent = t('battleLogTitle');
   const recentMatches = $('recentMatches'); if (recentMatches) recentMatches.textContent = t('recentMatches');
   const gameIsPvp=state.selectedMode==='pvp';
-  if ($('restartMatchBtn')) $('restartMatchBtn').textContent = gameIsPvp ? t('abandon') : t('newGame');
-  if ($('gameOverRematchBtn')) $('gameOverRematchBtn').textContent = gameIsPvp ? t(state.pvpRematchPending ? 'pvpRematchSent' : 'pvpRematch') : t('rematch');
+  const gameIsTraining=Boolean(trainingSession.active);
+  if ($('gameTitle')) $('gameTitle').textContent = gameIsTraining ? (trainingSession.phase==='tutorial' ? t('trainingGameTitle') : t('trainingMatchTitle')) : (gameIsPvp ? t('matchPlayer') : t('matchBot'));
+  if ($('restartMatchBtn')) { $('restartMatchBtn').textContent = gameIsTraining ? t('trainingRestartMatch') : (gameIsPvp ? t('abandon') : t('newGame')); $('restartMatchBtn').classList.toggle('hidden',gameIsTraining&&trainingSession.phase==='tutorial'); }
+  if ($('gameOverRematchBtn')) $('gameOverRematchBtn').textContent = gameIsTraining ? t('trainingRetry') : (gameIsPvp ? t(state.pvpRematchPending ? 'pvpRematchSent' : 'pvpRematch') : t('rematch'));
   $('botMeta').textContent=gameIsPvp?t('pvpPlayerLabel'):difficultyLabel(state.difficulty);
   const opponentAvatar=$('opponentAvatar');
   if(opponentAvatar){
@@ -1869,11 +2042,15 @@ function renderGame() {
 
   const hand = $('playerHand');
   hand.innerHTML = '';
-  state.hand.forEach(card => renderCard(card, hand, {
-    onClick: () => state.turn === 'player' && playCard(card),
-    onHold: () => state.turn === 'player' && stackCard(card),
-    dragToTable: true,
-  }));
+  if(gameIsTraining&&trainingSession.phase==='tutorial'){
+    state.hand.forEach(card=>renderCard(card,hand,{onClick:()=>state.turn==='player'&&trainingTutorialCardClick(card),highlight:card.id===trainingSession.targetCardId}));
+  }else{
+    state.hand.forEach(card => renderCard(card, hand, {
+      onClick: () => state.turn === 'player' && playCard(card),
+      onHold: () => state.turn === 'player' && stackCard(card),
+      dragToTable: true,
+    }));
+  }
   renderOpponentBacks();
   renderScorePile($('playerScorePile'), state.score, 'player');
   renderScorePile($('opponentScorePile'), state.opponentScore, 'bot');
@@ -1881,6 +2058,7 @@ function renderGame() {
   renderTableauPile($('opponentTableauPile'), state.tableauMarkers.opponent, 'bot');
   renderBattleLog();
   renderPvpAbandonOverlay();
+  renderTrainingGameCoach();
   startAnimationsForRender();
 }
 
@@ -1896,7 +2074,7 @@ function closeCaptureChooser(keepSource = false) {
   state.pendingCaptureGroups = [];
   state.pendingSelection = [];
   state.pendingPlay = null;
-  if (!keepSource) state.pendingPlaySourceRect = null;
+  if (!keepSource) { state.pendingPlaySourceRect = null; if(trainingSession.active&&trainingSession.phase==='match')trainingSession.pendingAdvice=null; }
   renderTable();
 }
 
@@ -1956,6 +2134,9 @@ function confirmCapture() {
   const sourceRect = state.pendingPlaySourceRect;
   closeCaptureChooser(true);
   if (!card || !captured.length) return;
+  const tableTotalBefore=tableCardCount();
+  const madeTable=captured.length===tableTotalBefore&&tableTotalBefore>0;
+  trainingSetChosenMove(card,captured,madeTable,'capture');
   state.hand = state.hand.filter(c => c.id !== card.id);
   state.lastTaker = 'player';
   beginActionMotion();
@@ -2008,6 +2189,8 @@ function openStackChooser(card, stacks) {
 function commitStack(card, stackId) {
   const stack = state.tableStacks.find(item => item.id === stackId);
   if (!stack || !state.hand.some(c => c.id === card.id)) return;
+  trainingPrepareMoveAdvice(card);
+  trainingSetChosenMove(card,[],false,'stack');
   const sourceRect = getCardRectById(card.id);
   beginActionMotion();
   state.hand = state.hand.filter(c => c.id !== card.id);
@@ -2025,6 +2208,8 @@ function commitStack(card, stackId) {
 function forcePlaceCard(card, sourceRect = null) {
   if (state.turn !== 'player' || state.dealing || state.animating) return;
   if (!state.hand.some(c => c.id === card.id)) return;
+  trainingPrepareMoveAdvice(card);
+  trainingSetChosenMove(card,[],false,'place');
   beginActionMotion();
   state.hand = state.hand.filter(c => c.id !== card.id);
   state.tableStacks.push(makeStack(card));
@@ -2038,9 +2223,11 @@ function forcePlaceCard(card, sourceRect = null) {
 
 function playCard(card) {
   if (state.turn !== 'player' || state.dealing || state.animating) return;
+  trainingPrepareMoveAdvice(card);
   const sourceRect = getCardRectById(card.id);
   const groups = rules.allCaptureGroupsForStacks(card, state.tableStacks);
   if (!groups.length) {
+    trainingSetChosenMove(card,[],false,'place');
     beginActionMotion();
     state.hand = state.hand.filter(c => c.id !== card.id);
     state.tableStacks.push(makeStack(card));
@@ -2053,6 +2240,9 @@ function playCard(card) {
     return;
   }
   if (groups.length === 1) {
+    const tableTotalBefore=tableCardCount();
+    const madeTable=groups[0].length===tableTotalBefore&&tableTotalBefore>0;
+    trainingSetChosenMove(card,groups[0],madeTable,'capture');
     state.hand = state.hand.filter(c => c.id !== card.id);
     state.lastTaker = 'player';
     completeCapture('player', card, groups[0], sourceRect);
@@ -2142,6 +2332,7 @@ function openTableauChooser(cards) {
     btn.innerHTML = `<span class="tableau-card-mini${card.red ? ' red' : ''}"><strong>${card.rank}</strong><span>${card.symbol}</span></span><span><strong>${cardLabel(card)}</strong><small>${t('tableMarker')}${bonus ? ` · ${t('tableauBonus',{bonus})}` : ` · ${t('tableauNoBonus')}`}</small></span>`;
     btn.addEventListener('click', () => {
       $('tableauDialog').close();
+      if(trainingSession.active&&trainingSession.phase==='match'&&trainingSession.pendingAdvice?.requiresTableau){trainingSession.pendingAdvice.chosenGain=Number(trainingSession.pendingAdvice.chosenGain||0)+rules.tableMarkerBonus(card);trainingSession.pendingAdvice.marker=card;}
       applyTableauMarker('player', card);
       state.waitingForTableau = false;
       state.pendingTableauCards = [];
@@ -2274,17 +2465,21 @@ function finishTurnOrDeal() {
       if (dealNextHands()) {
         state.turn = current === 'player' ? 'opponent' : 'player';
         renderGame();
+        if(trainingSession.active&&trainingSession.phase==='match'&&current==='player')trainingCoachAfterMove();
         if (isPvpMode()) void syncPvpState('active');
         else if (state.turn === 'opponent') void opponentMove(state.matchToken);
         return;
       }
     }
+    if(trainingSession.active&&trainingSession.phase==='match'&&trainingSession.pendingAdvice)trainingCoachAfterMove();
     endGame();
     return;
   }
 
+  const previousTurn=state.turn;
   state.turn = state.turn === 'player' ? 'opponent' : 'player';
   renderGame();
+  if(trainingSession.active&&trainingSession.phase==='match'&&previousTurn==='player')trainingCoachAfterMove();
   if (isPvpMode()) void syncPvpState('active');
   else if (state.turn === 'opponent') void opponentMove(state.matchToken);
 }
@@ -2316,6 +2511,7 @@ function recordBattleResult() {
 }
 
 function endGame() {
+  const wasTraining=trainingSession.active&&trainingSession.phase==='match';
   if (state.tableStacks.length && state.lastTaker) {
     const remaining = tableCards();
     const who = state.lastTaker;
@@ -2330,12 +2526,13 @@ function endGame() {
   addMatchEvent(state.lastTaker || 'system', state.message, 'end');
   renderGame();
   const winnerId=pvpWinnerFromLocalState();
-  if(wasPvp){recordPvpBattleResult(false,winnerId);void syncPvpState('completed',winnerId);}else{recordBattleResult();renderBattleLog();}
+  if(wasPvp){recordPvpBattleResult(false,winnerId);void syncPvpState('completed',winnerId);}else if(wasTraining){trainingSession.completed=state.score>state.opponentScore;}else{recordBattleResult();renderBattleLog();}
   $('finalPlayerScore').textContent = state.score;
   $('finalBotScore').textContent = state.opponentScore;
   $('finalBotLabel').textContent = wasPvp ? pvpOpponentName() : t('opponentBot');
-  $('gameOverTitle').textContent = state.score === state.opponentScore ? t('gameOverDraw') : state.score > state.opponentScore ? t('gameOverWin') : wasPvp ? t('pvpLost') : t('gameOverLoss');
-  $('gameOverCopy').textContent = wasPvp ? t('pvpFinishedCopy') : t('gameOverCopy');
+  $('gameOverTitle').textContent = wasTraining ? (state.score>state.opponentScore ? t('trainingWinTitle') : t('trainingLossTitle')) : (state.score === state.opponentScore ? t('gameOverDraw') : state.score > state.opponentScore ? t('gameOverWin') : wasPvp ? t('pvpLost') : t('gameOverLoss'));
+  $('gameOverCopy').textContent = wasTraining ? (state.score>state.opponentScore ? t('trainingWinCopy') : t('trainingLossCopy')) : (wasPvp ? t('pvpFinishedCopy') : t('gameOverCopy'));
+  if(wasTraining){$('gameOverMenuBtn').textContent=t('trainingExit');$('gameOverRematchBtn').textContent=t('trainingRetry');}
   $('gameOverDialog').showModal();
   const result = state.score === state.opponentScore ? 'draw' : state.score > state.opponentScore ? 'victory' : 'defeat';
   playTone(result);
@@ -2830,14 +3027,15 @@ $('closeRulesBtn').addEventListener('click', () => {
   $('rulesDialog').close();
   forceModalCleanup();
 });
-$('gameMenuBtn').addEventListener('click', () => { playTone('button'); if(isPvpMode()) void abandonPvpMatch(); else pauseCurrentMatch(); });
-$('restartMatchBtn').addEventListener('click', () => { playTone('button'); if (isPvpMode()) void abandonPvpMatch(); else void startMatch(state.difficulty); });
+$('gameMenuBtn').addEventListener('click', () => { playTone('button'); if(trainingSession.active){exitTrainingSession();}else if(isPvpMode()) void abandonPvpMatch(); else pauseCurrentMatch(); });
+$('restartMatchBtn').addEventListener('click', () => { playTone('button'); if(trainingSession.active){if(trainingSession.phase==='match')void startTrainingFinalMatch(); else exitTrainingSession();}else if (isPvpMode()) void abandonPvpMatch(); else void startMatch(state.difficulty); });
 $('rejoinMatchBtn').addEventListener('click', () => { playTone('button'); restoreMatchFromPause(); });
 $('abandonMatchBtn').addEventListener('click', () => { playTone('button'); abandonPausedMatch('manual'); });
-$('gameOverMenuBtn').addEventListener('click', () => { playTone('button'); goToMenu(); });
+$('gameOverMenuBtn').addEventListener('click', () => { playTone('button'); if(trainingSession.active)exitTrainingSession(); else goToMenu(); });
 $('gameOverRematchBtn').addEventListener('click', () => {
   playTone('button');
-  if(isPvpMode())void requestPvpRematch();
+  if(trainingSession.active){$('gameOverDialog').close();void startTrainingFinalMatch();}
+  else if(isPvpMode())void requestPvpRematch();
   else{$('gameOverDialog').close();void startMatch(state.difficulty);}
 });
 $('cancelCaptureBtn').addEventListener('click', () => { playTone('button'); closeCaptureChooser(); });
@@ -2858,6 +3056,7 @@ $('trainingHintBtn').addEventListener('click',()=>{showTrainingHint();playTone('
 $('trainingPrevBtn').addEventListener('click',()=>{if(trainingState.lesson<=0)return;trainingState.lesson--;renderTraining();playTone('button');});
 $('trainingNextBtn').addEventListener('click',()=>{if(!trainingState.answered)return;if(trainingState.lesson>=trainingLessons.length-1){closeTraining();playTone('success');return;}trainingState.lesson++;renderTraining();playTone('button');});
 $('trainingCloseBtn').addEventListener('click',()=>{closeTraining();playTone('button');});
+$('trainingGameCoachCloseBtn').addEventListener('click',()=>{playTone('button');exitTrainingSession();});
 $('languageSelect').addEventListener('change', event => { settings.language = event.target.value === 'en' ? 'en' : 'ro'; saveSettings(); applyLanguage(); playTone('success'); });
 
 $('tableZone').addEventListener('dragover', event => {
@@ -2891,7 +3090,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=087-presence-training').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=088-training-coach').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

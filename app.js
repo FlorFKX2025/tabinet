@@ -651,6 +651,52 @@ async function abandonPvpMatch(){
   state.matchToken+=1;state.pvpMatchId=null;state.pvpMatchVersion=0;state.pvpOpponent=null;state.pvpAbandonExpiresAt=null;state.pvpAbandonBy=null;state.pvpLeavingMatchId=null;state.pvpTerminalHandled=false;state.selectedMode='bot';state.turn='menu';state.message='';
   $('gameOverDialog')?.close();showScreen('menuScreen');
 }
+function renderPvpAbandonOverlay(){
+  const overlay=$('pvpAbandonOverlay');if(!overlay)return;
+  const active=isPvpMode()&&state.pvpAbandonExpiresAt&&!state.pvpTerminalHandled;
+  if(!active){overlay.classList.add('hidden');return;}
+  const remaining=Math.max(0,new Date(state.pvpAbandonExpiresAt).getTime()-Date.now()),seconds=Math.ceil(remaining/1000);
+  $('pvpAbandonCountdown').textContent=String(seconds);
+  $('pvpAbandonCopy').textContent=t('pvpAbandonWaiting').replace('{name}',pvpOpponentName());
+  overlay.classList.remove('hidden');
+  if(seconds<=0)void refreshPvpDashboard();
+}
+
+async function cancelPvpInvite(inviteId){
+  if(!inviteId)return;
+  try{
+    const result=await tabinetRpc('tabinet_cancel_pvp_invite',{p_invite_id:inviteId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+    if(result?.ok)await refreshPvpDashboard();
+  }catch{}
+}
+
+async function requestPvpRematch(){
+  if(!isPvpMode()||!state.pvpMatchId||state.pvpRematchPending)return;
+  state.pvpRematchPending=true;
+  const btn=$('gameOverRematchBtn');
+  if(btn){btn.disabled=true;btn.textContent=t('pvpRematchSent');}
+  try{
+    const result=await tabinetRpc('tabinet_request_pvp_rematch',{p_original_match_id:state.pvpMatchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+    if(!result?.ok){
+      state.pvpRematchPending=false;
+      if(btn){btn.disabled=false;btn.textContent=t('pvpRematch');}
+    }else await refreshPvpDashboard();
+  }catch{
+    state.pvpRematchPending=false;
+    if(btn){btn.disabled=false;btn.textContent=t('pvpRematch');}
+  }
+}
+
+async function respondToPvpRematch(requestId,accept){
+  if(pvpActionBusy)return;
+  pvpActionBusy=true;
+  try{
+    const result=await tabinetRpc('tabinet_respond_pvp_rematch',{p_request_id:requestId,p_accept:Boolean(accept),p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+    if(result?.ok&&result.status==='accepted'&&result.match_id)await enterPvpMatch(result.match_id);
+    else await refreshPvpDashboard();
+  }catch{alert(t('pvpBackendError'));}finally{pvpActionBusy=false;}
+}
+
 function startFriendsHeartbeat() {
   if (!tabinetSupabase) return;
   void syncProfileOnline();
@@ -1239,7 +1285,7 @@ const I18N = {
     menuTitle: 'Joacă simplu. Ia tot.', menuSubtitle: 'Intră într-o partidă în câteva secunde.', menuPill: 'MVP • BOT DISPONIBIL', menuHeroTitle: 'O partidă relaxată, direct în browser.', menuHeroCopy: 'Nu ai nevoie de instalări. Alegi adversarul, dificultatea și intri la masă.', menuVersion: 'v0.8.0 • PvP + matchmaking + invitații',
     settings: 'Setări', settingsCopy: 'Sunete, animații și limbă', friendsMenu: 'Prieteni', friendsMenuCopy: 'Adaugă și gestionează prietenii', rules: 'Reguli', rulesCopy: 'Vezi cum se joacă', play: 'Joacă', back: 'Înapoi',
     step1: 'PASUL 1', modeTitle: 'Cum vrei să joci?', modeCopy: 'Alege un adversar. Multiplayer-ul cu alt jucător vine în curând.', bot: 'Cu bot', botCopy: 'Joacă acum împotriva unui adversar controlat de joc.', choose: 'Alege →', realPlayer:'Cu player real', realCopy:'Joacă online cu un prieten sau caută un adversar.',
-    pvpStep:'PASUL 2', pvpModeTitle:'Cum vrei să alegi adversarul?', pvpModeCopy:'Provoacă direct un prieten sau lasă jocul să găsească un jucător disponibil.', pvpFriendTitle:'Contra unui prieten', pvpFriendCopy:'Alege unul dintre prietenii tăi și trimite-i invitația.', pvpMatchmakingChoiceTitle:'Matchmaking', pvpMatchmakingChoiceCopy:'Intră în coadă și te potrivim automat cu un jucător.', pvpFriendsTitle:'Alege un prieten', pvpFriendsCopy:'Invitația apare în meniul principal al prietenului și poate fi acceptată sau refuzată.', pvpMatchmakingTitle:'Căutăm un adversar', pvpSearchCopy:'Te conectăm cu primul jucător disponibil.', pvpSearching:'Se caută un adversar…', pvpMatched:'Adversar găsit! Se pregătește masa…', pvpMatchError:'Nu am putut intra în matchmaking.', pvpNoFriends:'Nu ai încă prieteni pe care îi poți provoca.', pvpInviteFriend:'Provoacă', pvpInviteSent:'Invitație trimisă', pvpInviteKicker:'INVITAȚIE LA MECI', pvpInviteCopy:'vrea să joace Tabinet cu tine.', pvpAccept:'Acceptă', pvpReject:'Refuză', pvpInviteError:'Nu s-a putut trimite invitația.', pvpBackendError:'Serviciul online nu este disponibil momentan.', pvpPlayerLabel:'PLAYER', pvpWaitingOpponent:'Așteaptă mutarea adversarului…', pvpOpponentThinking:'Adversarul se gândește…', pvpWaitHint:'Așteaptă mutarea adversarului.', pvpOpponentStarts:'Adversarul începe această mână.', matchPlayer:'Meci PvP', pvpWon:'Ai câștigat.', pvpLost:'Ai pierdut.', pvpWonAbandoned:'Ai câștigat prin abandon.', pvpLostAbandoned:'Ai pierdut prin abandon.', pvpAbandonedCopy:'Meciul s-a încheiat deoarece unul dintre jucători a abandonat.', pvpAbandonWaiting:'Așteaptă-l pe {name}…', pvpRematch:'Răzbunare', pvpRematchSent:'Cerere trimisă', pvpRematchKicker:'CERERE DE RĂZBUNARE', pvpRematchCopy:'vrea revanșă.', pvpCancelInvite:'Anulează invitația', pvpAbandonWaiting:'Wait for {name}…', pvpRematch:'Fight again', pvpRematchSent:'Request sent', pvpRematchKicker:'REVENGE REQUEST', pvpRematchCopy:'wants a rematch.', pvpCancelInvite:'Cancel invite', pvpFinishedCopy:'Meciul PvP s-a încheiat.', historyKicker: 'ISTORIC', historyTitle: 'Log-uri meciuri', historyCopyMode: 'Vezi cu cine ai jucat, scorurile și cum a decurs partida.', viewLogs: 'Vezi log-urile',
+    pvpStep:'PASUL 2', pvpModeTitle:'Cum vrei să alegi adversarul?', pvpModeCopy:'Provoacă direct un prieten sau lasă jocul să găsească un jucător disponibil.', pvpFriendTitle:'Contra unui prieten', pvpFriendCopy:'Alege unul dintre prietenii tăi și trimite-i invitația.', pvpMatchmakingChoiceTitle:'Matchmaking', pvpMatchmakingChoiceCopy:'Intră în coadă și te potrivim automat cu un jucător.', pvpFriendsTitle:'Alege un prieten', pvpFriendsCopy:'Invitația apare în meniul principal al prietenului și poate fi acceptată sau refuzată.', pvpMatchmakingTitle:'Căutăm un adversar', pvpSearchCopy:'Te conectăm cu primul jucător disponibil.', pvpSearching:'Se caută un adversar…', pvpMatched:'Adversar găsit! Se pregătește masa…', pvpMatchError:'Nu am putut intra în matchmaking.', pvpNoFriends:'Nu ai încă prieteni pe care îi poți provoca.', pvpInviteFriend:'Provoacă', pvpInviteSent:'Invitație trimisă', pvpInviteKicker:'INVITAȚIE LA MECI', pvpInviteCopy:'vrea să joace Tabinet cu tine.', pvpAccept:'Acceptă', pvpReject:'Refuză', pvpInviteError:'Nu s-a putut trimite invitația.', pvpBackendError:'Serviciul online nu este disponibil momentan.', pvpPlayerLabel:'PLAYER', pvpWaitingOpponent:'Așteaptă mutarea adversarului…', pvpOpponentThinking:'Adversarul se gândește…', pvpWaitHint:'Așteaptă mutarea adversarului.', pvpOpponentStarts:'Adversarul începe această mână.', matchPlayer:'Meci PvP', pvpWon:'Ai câștigat.', pvpLost:'Ai pierdut.', pvpWonAbandoned:'Ai câștigat prin abandon.', pvpLostAbandoned:'Ai pierdut prin abandon.', pvpAbandonedCopy:'Meciul s-a încheiat deoarece unul dintre jucători a abandonat.', pvpAbandonWaiting:'Așteaptă-l pe {name}…', pvpRematch:'Răzbunare', pvpRematchSent:'Cerere trimisă', pvpRematchKicker:'CERERE DE RĂZBUNARE', pvpRematchCopy:'vrea revanșă.', pvpCancelInvite:'Anulează invitația', pvpFinishedCopy:'Meciul PvP s-a încheiat.', historyKicker: 'ISTORIC', historyTitle: 'Log-uri meciuri', historyCopyMode: 'Vezi cu cine ai jucat, scorurile și cum a decurs partida.', viewLogs: 'Vezi log-urile',
     step2: 'PASUL 2', difficultyTitle: 'Cât de greu vrei să fie?', difficultyCopy: 'Alege ritmul și nivelul botului.', easy: 'Ușor', easyCopy: 'Bot relaxat, potrivit pentru primele partide.', medium: 'Mediu', mediumCopy: 'Bot echilibrat, caută capturi și puncte.', hard: 'Mare', hardCopy: 'Bot competitiv, analizează mai multe mutări.',
     matchBot: 'Meci cu bot', deck: 'în pachet', table: 'MASĂ', opponent: 'ADVERSAR', yourHand: 'MÂNA TA', you:'TU', botLabel:'BOT', pile: 'teanc de puncte', playerTableauLabel:'TABLELE', opponentTableauLabel:'TABLELE', playerTableauActive:'active', opponentTableauActive:'active', newGame: 'Joc nou', round: 'MÂNA', lastHand: 'ULTIMA MÂNĂ', yourTurn: 'Este rândul tău', botThinking: 'Botul se gândește…', gameEnded: 'Partida s-a încheiat', chooseCard: 'Alege o carte.', waitBot: 'Așteaptă mutarea botului.', tapHint: 'Click = joacă · Ține apăsat = stivă · Trage pe masă = pune fără captură.', waitHint: 'Așteaptă mutarea botului.', deckRemaining:'în pachet', battleLogTitle:'BATTLE LOG', recentMatches:'ultimele meciuri', playerStarts:'Începi tu.', botStarts:'Botul începe această mână.',
     captureKicker:'CAPTURĂ', captureTitle:'Ai mai multe variante', cancel:'Anulează', takeCards:'Ia cărțile', selected:'Ai selectat', cardsWord:'cărți', cardWord:'carte', selectCapture:'Selectează cel puțin o captură.', optionTarget:'Cu {card} ai {count} variante. Selectează una sau mai multe variante care nu folosesc aceleași cărți.',
@@ -1257,7 +1303,7 @@ const I18N = {
     menuTitle: 'Play simple. Take it all.', menuSubtitle: 'Get into a match in a few seconds.', menuPill: 'MVP • BOT AVAILABLE', menuHeroTitle: 'A relaxed match, right in your browser.', menuHeroCopy: 'No installs needed. Choose your opponent, difficulty and sit at the table.', menuVersion: 'v0.8.0 • PvP + matchmaking + invites',
     settings: 'Settings', settingsCopy: 'Sounds, animations and language', friendsMenu: 'Friends', friendsMenuCopy: 'Add and manage friends', rules: 'Rules', rulesCopy: 'See how to play', play: 'Play', back: 'Back',
     step1: 'STEP 1', modeTitle: 'How do you want to play?', modeCopy: 'Choose an opponent. Online multiplayer is coming soon.', bot: 'Play vs bot', botCopy: 'Play now against a game-controlled opponent.', choose: 'Choose →', realPlayer:'Real player', realCopy:'Play online with a friend or find an opponent.',
-    pvpStep:'STEP 2', pvpModeTitle:'How do you want to choose an opponent?', pvpModeCopy:'Challenge a friend directly or let matchmaking find an available player.', pvpFriendTitle:'Play a friend', pvpFriendCopy:'Choose one of your friends and send an invite.', pvpMatchmakingChoiceTitle:'Matchmaking', pvpMatchmakingChoiceCopy:'Join the queue and we will pair you with a player automatically.', pvpFriendsTitle:'Choose a friend', pvpFriendsCopy:'The invite appears in your friend’s main menu and can be accepted or declined.', pvpMatchmakingTitle:'Finding an opponent', pvpSearchCopy:'We are connecting you with the first available player.', pvpSearching:'Looking for an opponent…', pvpMatched:'Opponent found! Setting up the table…', pvpMatchError:'We could not join matchmaking.', pvpNoFriends:'You have no friends you can challenge yet.', pvpInviteFriend:'Challenge', pvpInviteSent:'Invite sent', pvpInviteKicker:'MATCH INVITE', pvpInviteCopy:'wants to play Tabinet with you.', pvpAccept:'Accept', pvpReject:'Decline', pvpInviteError:'The invite could not be sent.', pvpBackendError:'The online service is unavailable right now.', pvpPlayerLabel:'PLAYER', pvpWaitingOpponent:'Waiting for your opponent…', pvpOpponentThinking:'Your opponent is thinking…', pvpWaitHint:'Wait for your opponent’s move.', pvpOpponentStarts:'Your opponent starts this hand.', matchPlayer:'PvP match', pvpWon:'You won.', pvpLost:'You lost.', pvpWonAbandoned:'You won by abandonment.', pvpLostAbandoned:'You lost by abandonment.', pvpAbandonedCopy:'The match ended because one player abandoned it.', pvpFinishedCopy:'The PvP match has ended.', historyKicker: 'HISTORY', historyTitle: 'Match logs', historyCopyMode: 'See who you played, the scores and how the match went.', viewLogs: 'View logs',
+    pvpStep:'STEP 2', pvpModeTitle:'How do you want to choose an opponent?', pvpModeCopy:'Challenge a friend directly or let matchmaking find an available player.', pvpFriendTitle:'Play a friend', pvpFriendCopy:'Choose one of your friends and send an invite.', pvpMatchmakingChoiceTitle:'Matchmaking', pvpMatchmakingChoiceCopy:'Join the queue and we will pair you with a player automatically.', pvpFriendsTitle:'Choose a friend', pvpFriendsCopy:'The invite appears in your friend’s main menu and can be accepted or declined.', pvpMatchmakingTitle:'Finding an opponent', pvpSearchCopy:'We are connecting you with the first available player.', pvpSearching:'Looking for an opponent…', pvpMatched:'Opponent found! Setting up the table…', pvpMatchError:'We could not join matchmaking.', pvpNoFriends:'You have no friends you can challenge yet.', pvpInviteFriend:'Challenge', pvpInviteSent:'Invite sent', pvpInviteKicker:'MATCH INVITE', pvpInviteCopy:'wants to play Tabinet with you.', pvpAccept:'Accept', pvpReject:'Decline', pvpInviteError:'The invite could not be sent.', pvpBackendError:'The online service is unavailable right now.', pvpPlayerLabel:'PLAYER', pvpWaitingOpponent:'Waiting for your opponent…', pvpOpponentThinking:'Your opponent is thinking…', pvpWaitHint:'Wait for your opponent’s move.', pvpOpponentStarts:'Your opponent starts this hand.', matchPlayer:'PvP match', pvpWon:'You won.', pvpLost:'You lost.', pvpWonAbandoned:'You won by abandonment.', pvpLostAbandoned:'You lost by abandonment.', pvpAbandonedCopy:'The match ended because one player abandoned it.', pvpAbandonWaiting:'Wait for {name}…', pvpRematch:'Fight again', pvpRematchSent:'Request sent', pvpRematchKicker:'REVENGE REQUEST', pvpRematchCopy:'wants a rematch.', pvpCancelInvite:'Cancel invite', pvpFinishedCopy:'The PvP match has ended.', historyKicker: 'HISTORY', historyTitle: 'Match logs', historyCopyMode: 'See who you played, the scores and how the match went.', viewLogs: 'View logs',
     step2: 'STEP 2', difficultyTitle: 'How hard should it be?', difficultyCopy: 'Choose the bot pace and level.', easy: 'Easy', easyCopy: 'Relaxed bot, good for first matches.', medium: 'Medium', mediumCopy: 'Balanced bot, looks for captures and points.', hard: 'Hard', hardCopy: 'Competitive bot, analyzes more moves.',
     matchBot: 'Match vs bot', deck: 'in deck', table: 'TABLE', opponent: 'OPPONENT', yourHand: 'YOUR HAND', you:'YOU', botLabel:'BOT', pile: 'point pile', playerTableauLabel:'TABLES', opponentTableauLabel:'TABLES', playerTableauActive:'active', opponentTableauActive:'active', newGame: 'New game', round: 'HAND', lastHand: 'LAST HAND', yourTurn: 'Your turn', botThinking: 'The bot is thinking…', gameEnded: 'Match ended', chooseCard: 'Choose a card.', waitBot: 'Wait for the bot move.', tapHint: 'Click = play · Hold = stack · Drag onto the table = place without capturing.', waitHint: 'Wait for the bot move.', deckRemaining:'in deck', battleLogTitle:'BATTLE LOG', recentMatches:'recent matches', playerStarts:'You start.', botStarts:'The bot starts this hand.',
     captureKicker:'CAPTURE', captureTitle:'You have multiple options', cancel:'Cancel', takeCards:'Take cards', selected:'You selected', cardsWord:'cards', cardWord:'card', selectCapture:'Select at least one capture.', optionTarget:'With {card} you have {count} options. Select one or more options that do not reuse the same cards.',
@@ -2499,6 +2545,11 @@ $('pvpFriendsList').addEventListener('click', event => {
   if(cancel){playTone('button');void cancelPvpInvite(cancel.dataset.inviteId);}
 });
 
+$('pvpRematchNotification').addEventListener('click', event => {
+  const accept=event.target.closest('.pvp-rematch-accept'),reject=event.target.closest('.pvp-rematch-reject');
+  if(accept){playTone('button');void respondToPvpRematch(accept.dataset.rematchId,true);}
+  if(reject){playTone('button');void respondToPvpRematch(reject.dataset.rematchId,false);}
+});
 $('pvpInviteNotification').addEventListener('click', event => { const accept=event.target.closest('.pvp-invite-accept'),reject=event.target.closest('.pvp-invite-reject'); if(accept){playTone('button');void respondToPvpInvite(accept.dataset.inviteId,true);} if(reject){playTone('button');void respondToPvpInvite(reject.dataset.inviteId,false);} });
 $('modeBackBtn').addEventListener('click', () => { playTone('button'); showScreen('menuScreen'); });
 $('difficultyBackBtn').addEventListener('click', () => { playTone('button'); showScreen('modeScreen'); });
@@ -2697,7 +2748,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=080-pvp').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=083-pvp-features').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

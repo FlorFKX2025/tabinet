@@ -97,9 +97,11 @@
         </div>
       </div>
 
+      <aside id="pvpInviteNotification" class="pvp-invite-notification hidden" aria-live="assertive"></aside>
+
       <footer class="menu-footer">
         <span>Browser-first • PWA</span>
-        <span id="menuVersion">v0.7.6 • Profil + statistici + start aleator</span>
+        <span id="menuVersion">v0.8.0 • PvP + matchmaking + invitații</span>
       </footer>
 
       <aside id="resumeMatchBar" class="resume-match-bar hidden" aria-live="assertive" aria-label="Partidă pusă pe pauză">
@@ -122,7 +124,7 @@
       <div class="screen-heading">
         <p class="eyebrow">PASUL 1</p>
         <h2 id="modeTitle">Cum vrei să joci?</h2>
-        <p>Alege un adversar. Multiplayer-ul cu alt jucător vine în curând.</p>
+        <p>Alege modul de joc. Pentru PvP poți provoca un prieten sau intra în matchmaking.</p>
       </div>
       <div class="choice-grid choice-grid-mode">
         <button class="big-choice active-choice" id="botModeBtn" type="button">
@@ -131,11 +133,11 @@
           <span class="big-choice-copy">Joacă acum împotriva unui adversar controlat de joc.</span>
           <span class="choice-cta">Alege →</span>
         </button>
-        <button class="big-choice disabled-choice" type="button" disabled>
+        <button class="big-choice" id="realPlayerBtn" type="button">
           <span class="choice-art player-art">2P</span>
           <span class="big-choice-title">Cu player real</span>
-          <span class="big-choice-copy">Conectarea online este pregătită pentru o etapă viitoare.</span>
-          <span class="choice-cta">În curând</span>
+          <span class="big-choice-copy">Joacă online cu un prieten sau caută un adversar.</span>
+          <span class="choice-cta">Alege →</span>
         </button>
       </div>
       <div class="mode-history-card">
@@ -146,6 +148,54 @@
         </div>
         <button class="secondary" id="openHistoryBtn" type="button">Vezi log-urile</button>
       </div>
+    </section>
+
+    <!-- PvP route -->
+    <section id="pvpModeScreen" class="screen hidden" aria-labelledby="pvpModeTitle">
+      <button class="back-button" id="pvpBackBtn" type="button">← Înapoi</button>
+      <div class="screen-heading">
+        <p class="eyebrow" id="pvpModeKicker">PASUL 2</p>
+        <h2 id="pvpModeTitle">Cum vrei să alegi adversarul?</h2>
+        <p id="pvpModeCopy">Provoacă direct un prieten sau lasă jocul să găsească un jucător disponibil.</p>
+      </div>
+      <div class="choice-grid choice-grid-mode">
+        <button class="big-choice active-choice" id="pvpFriendsBtn" type="button">
+          <span class="choice-art player-art">👥</span>
+          <span class="big-choice-title" id="pvpFriendTitle">Contra unui prieten</span>
+          <span class="big-choice-copy" id="pvpFriendCopy">Alege unul dintre prietenii tăi și trimite-i invitația.</span>
+          <span class="choice-cta">Alege →</span>
+        </button>
+        <button class="big-choice active-choice" id="pvpMatchmakingBtn" type="button">
+          <span class="choice-art bot-art">VS</span>
+          <span class="big-choice-title" id="pvpMatchmakingChoiceTitle">Matchmaking</span>
+          <span class="big-choice-copy" id="pvpMatchmakingChoiceCopy">Intră în coadă și te potrivim automat cu un jucător.</span>
+          <span class="choice-cta">Caută →</span>
+        </button>
+      </div>
+    </section>
+
+    <section id="pvpFriendsScreen" class="screen hidden" aria-labelledby="pvpFriendsTitle">
+      <button class="back-button" id="pvpFriendsBackBtn" type="button">← Înapoi</button>
+      <div class="screen-heading">
+        <p class="eyebrow">PRIETENI</p>
+        <h2 id="pvpFriendsTitle">Alege un prieten</h2>
+        <p id="pvpFriendsCopy">Invitația apare în meniul principal al prietenului și poate fi acceptată sau refuzată.</p>
+      </div>
+      <div id="pvpFriendsList" class="pvp-friends-list"></div>
+    </section>
+
+    <section id="pvpMatchmakingScreen" class="screen hidden" aria-labelledby="pvpMatchmakingTitle">
+      <div class="screen-heading pvp-matchmaking-heading">
+        <p class="eyebrow">MATCHMAKING</p>
+        <h2 id="pvpMatchmakingTitle">Căutăm un adversar</h2>
+        <p id="pvpSearchingHint">Te conectăm cu primul jucător disponibil.</p>
+      </div>
+      <div class="pvp-search-card">
+        <div class="pvp-search-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+        <strong id="pvpMatchmakingStatus">Se caută un adversar…</strong>
+        <small>Rămâi aici până găsim o masă.</small>
+      </div>
+      <button class="secondary" id="pvpMatchmakingCancelBtn" type="button">← Înapoi</button>
     </section>
 
     <!-- Difficulty select -->
@@ -216,7 +266,7 @@
           <div class="round-badge" id="roundBadge">MECI</div>
           <div class="player-chip player-chip-bot">
             <span class="score-value" id="opponentScore">0</span>
-            <div><strong>Bot</strong><small id="botMeta">Ușor</small></div>
+            <div><strong id="opponentChipName">Bot</strong><small id="botMeta">Ușor</small></div>
             <div class="avatar bot-avatar">BOT</div>
           </div>
         </div>

@@ -115,12 +115,12 @@ const trainingSession = {
 };
 
 const trainingScenarios = [
-  {ruleKey:'training1Title',coachKey:'training1Coach',explainKey:'training1Explain',table:['3♣','4♦'],hand:['7♥','9♠','2♣','A♥','K♣'],opponentCards:6,target:'7♥'},
-  {ruleKey:'training2Title',coachKey:'training2Coach',explainKey:'training2Explain',table:['10♠','A♥'],hand:['A♣','7♦','3♣','Q♥','9♠'],opponentCards:5,target:'A♣'},
-  {ruleKey:'training3Title',coachKey:'training3Coach',explainKey:'training3Explain',table:['7♣','7♦'],hand:['7♥','9♠','4♣','A♦','2♣'],opponentCards:4,target:'7♥'},
-  {ruleKey:'training4Title',coachKey:'training4Coach',explainKey:'training4Explain',table:['2♦'],hand:['2♣','6♠','Q♥','10♣','7♦'],opponentCards:6,target:'2♣'},
-  {ruleKey:'training5Title',coachKey:'training5Coach',explainKey:'training5Explain',table:['9♣'],hand:['9♦','A♥','10♦','K♣','2♥'],opponentCards:5,target:'9♦'},
-  {ruleKey:'training6Title',coachKey:'training6Coach',explainKey:'training6Explain',table:['A♥','9♣','K♦'],hand:['A♠','4♣','J♥','6♦','Q♠'],opponentCards:2,target:'A♠'}
+  {ruleKey:'training1Title',coachKey:'training1Coach',explainKey:'training1Explain',table:['3♣','4♦'],hand:['7♥','9♠','2♣','A♥','K♣','5♠'],opponentCards:6,target:'7♥'},
+  {ruleKey:'training2Title',coachKey:'training2Coach',explainKey:'training2Explain',table:['10♠','A♥'],hand:['A♣','7♦','3♣','Q♥','9♠','K♣'],opponentCards:6,target:'A♣'},
+  {ruleKey:'training3Title',coachKey:'training3Coach',explainKey:'training3Explain',table:['7♣','7♦'],hand:['7♥','9♠','4♣','A♦','2♣','5♥'],opponentCards:6,target:'7♥'},
+  {ruleKey:'training4Title',coachKey:'training4Coach',explainKey:'training4Explain',table:['2♦'],hand:['2♣','6♠','Q♥','10♣','7♦','A♦'],opponentCards:6,target:'2♣'},
+  {ruleKey:'training5Title',coachKey:'training5Coach',explainKey:'training5Explain',table:['9♣'],hand:['9♦','A♥','10♦','K♣','2♥','6♠'],opponentCards:6,target:'9♦'},
+  {ruleKey:'training6Title',coachKey:'training6Coach',explainKey:'training6Explain',table:['A♥','9♣','K♦'],hand:['A♠','4♣','J♥','6♦','Q♠','3♥'],opponentCards:6,target:'A♠'}
 ];
 window.__tabinetPvpDashboard = { incoming_invites: [], outgoing_invites: [], queue_waiting: false, active_match: null };
 
@@ -933,10 +933,12 @@ function setupTrainingScenario(index){
   const scenario=trainingScenarios[index];
   trainingSession.lesson=index;trainingSession.answered=false;trainingSession.targetLabel=scenario.target;trainingSession.targetCardId=null;
   trainingSession.coachSpeech=t(scenario.coachKey)+' '+t('trainingCoachPlay',{card:scenario.target});
-  state.nextStackId=9000+(index*20);state.deck=trainingScenarioDeck(18);state.tableStacks=trainingScenarioTable(scenario.table,index);
+  state.nextStackId=9000+(index*20);state.deck=trainingScenarioDeck(index===trainingScenarios.length-1?0:18);state.tableStacks=trainingScenarioTable(scenario.table,index);
   state.hand=scenario.hand.map((label,i)=>trainingCardFromLabel(label,9200+(index*20)+i));
   state.opponentHand=Array.from({length:Number(scenario.opponentCards||6)},(_,i)=>({id:9400+(index*20)+i}));
-  state.round=1;state.lastDeal=false;state.score=0;state.opponentScore=0;
+  const targetCard=state.hand.find(card=>cardLabel(card)===scenario.target);
+  trainingSession.targetCardId=targetCard?.id||null;
+  state.round=1;state.lastDeal=index===trainingScenarios.length-1;state.score=0;state.opponentScore=0;
   state.captured={player:[],opponent:[]};state.played={player:[],opponent:[]};state.tableauMarkers={player:[],opponent:[]};state.lastTaker=null;
   state.pendingPlay=null;state.pendingCaptureGroups=[];state.pendingSelection=[];state.pendingStackCard=null;state.pendingPlaySourceRect=null;state.waitingForTableau=false;
   state.dealing=false;state.animating=false;state.visualAnimation=null;state.matchEvents=[];state.replayFrames=[];state.replayLastVersion=0;state.turn='player';

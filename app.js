@@ -793,11 +793,10 @@ function syncModalScrollLock() {
 
 function preventBackgroundScroll(event) {
   if (!document.body.classList.contains('modal-scroll-locked')) return;
-  // The profile dialog is the only modal allowed to scroll internally.
-  // Background scrolling remains locked, while wheel/touch gestures inside
-  // #profileDialog are handled by the dialog's own scroll container.
+  // Keep the page behind a modal locked, but let any open dialog receive its
+  // own wheel/touch gesture so mobile dialogs can scroll to their actions.
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest('#profileDialog')) return;
+  if (target?.closest('dialog[open]')) return;
   event.preventDefault();
 }
 

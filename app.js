@@ -907,10 +907,11 @@ function trainingCoachAfterMove(){
   trainingSession.pendingAdvice=null;
   renderTrainingGameCoach();
 }
+function normalizeTrainingCardLabel(value){return String(value||'').replace(/\s+/g,'').toUpperCase();}
 function trainingTutorialCardClick(card){
   if(!trainingSession.active||trainingSession.phase!=='tutorial'||trainingSession.answered)return;
   const scenario=trainingScenarios[trainingSession.lesson],chosen=cardLabel(card);
-  if(chosen!==scenario.target){
+  if(normalizeTrainingCardLabel(chosen)!==normalizeTrainingCardLabel(scenario.target)){
     trainingSession.coachSpeech=t('trainingCoachWrongCard',{card:scenario.target});
     renderTrainingGameCoach();
     const el=document.querySelector('#playerHand .card[data-id="'+card.id+'"]');
@@ -936,7 +937,7 @@ function setupTrainingScenario(index){
   state.nextStackId=9000+(index*20);state.deck=trainingScenarioDeck(index===trainingScenarios.length-1?0:18);state.tableStacks=trainingScenarioTable(scenario.table,index);
   state.hand=scenario.hand.map((label,i)=>trainingCardFromLabel(label,9200+(index*20)+i));
   state.opponentHand=Array.from({length:Number(scenario.opponentCards||6)},(_,i)=>({id:9400+(index*20)+i}));
-  const targetCard=state.hand.find(card=>cardLabel(card)===scenario.target);
+  const targetCard=state.hand.find(card=>normalizeTrainingCardLabel(cardLabel(card))===normalizeTrainingCardLabel(scenario.target));
   trainingSession.targetCardId=targetCard?.id||null;
   state.round=1;state.lastDeal=index===trainingScenarios.length-1;state.score=0;state.opponentScore=0;
   state.captured={player:[],opponent:[]};state.played={player:[],opponent:[]};state.tableauMarkers={player:[],opponent:[]};state.lastTaker=null;

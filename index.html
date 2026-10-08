@@ -8,7 +8,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg?v=087-presence-training" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css?v=087-presence-training">
-  <title>Tabinet • v0.8.8</title>
+  <title>Tabinet • v0.8.9</title>
 <script>
   (function () {
     const RESET_KEY = 'tabinet-pages-reset-087-presence-training';
@@ -102,7 +102,7 @@
 
       <footer class="menu-footer">
         <span>Browser-first • PWA</span>
-        <span id="menuVersion">v0.8.8 • replay + antrenament live + prezență</span>
+        <span id="menuVersion">v0.8.9 • replay + spectate live + loguri curate</span>
       </footer>
 
       <aside id="resumeMatchBar" class="resume-match-bar hidden" aria-live="assertive" aria-label="Partidă pusă pe pauză">
@@ -583,7 +583,7 @@
       <span class="history-total" id="historyTotal">0</span>
     </div>
     <div id="historyEntries" class="history-entries"></div>
-    <div class="dialog-actions"><button class="primary" id="closeHistoryBtn" type="button">Închide</button></div>
+    <div class="dialog-actions history-dialog-actions"><button class="secondary" id="clearHistoryBtn" type="button">Curăță</button><button class="primary" id="closeHistoryBtn" type="button">Închide</button></div>
   </dialog>
 
   <dialog id="replayDialog" class="choice-dialog replay-dialog" tabindex="-1">
@@ -597,6 +597,16 @@
     <div class="replay-controls"><div class="replay-speeds"><span id="replaySpeedLabel">Viteză</span><button class="secondary replay-speed-btn" type="button" data-speed="0.5">0.5×</button><button class="secondary replay-speed-btn active" type="button" data-speed="1">1×</button><button class="secondary replay-speed-btn" type="button" data-speed="2">2×</button></div><div class="replay-main-controls"><button class="secondary" id="replayRestartBtn" type="button">↺</button><button class="primary" id="replayPlayBtn" type="button">Redă</button></div></div>
     <section class="replay-events-panel"><div class="replay-events-head"><strong>Mutări înregistrate</strong><small>apasă pe o mutare pentru a sări direct la ea</small></div><div id="replayEventList" class="replay-event-list"></div></section>
     <div class="dialog-actions"><button class="secondary" id="replayCloseBtn" type="button">Închide</button></div>
+  </dialog>
+
+  <dialog id="spectatorDialog" class="choice-dialog spectator-dialog" tabindex="-1">
+    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+    <div class="spectator-head"><div><div class="dialog-kicker">LIVE SPECTATE</div><h2 id="spectatorTitle">Meci live</h2><p class="dialog-copy">Urmărești partida în timp real fără să vezi cărțile adversarului.</p></div><div class="spectator-live-chip"><i></i> LIVE</div></div>
+    <div class="spectator-privacy" id="spectatorPrivacy">Vezi doar mâna lui X. Adversarul rămâne ascuns.</div>
+    <div class="spectator-meta-bar"><div class="spectator-target-meta"><div class="spectator-avatar" id="spectatorAvatar"></div><div><strong id="spectatorTargetName">Jucător</strong><small id="spectatorTargetId">TB-XXXXXX</small></div></div><div class="spectator-score-box"><small>SCOR</small><strong id="spectatorTargetScore">0</strong></div><div class="spectator-score-box"><small>RÂND</small><strong id="spectatorTurn">—</strong></div><div class="spectator-score-box"><small>MÂNA</small><strong id="spectatorRound">1</strong></div></div>
+    <div id="spectatorBoard" class="spectator-board"></div>
+    <div class="spectator-current" id="spectatorStatus" aria-live="polite">Se conectează…</div>
+    <div class="dialog-actions"><button class="primary" id="spectatorCloseBtn" type="button">Închide</button></div>
   </dialog>
 
   <dialog id="trainingDialog" class="choice-dialog training-dialog" tabindex="-1">
@@ -697,7 +707,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./rules.js?v=087-presence-training" defer></script>
-  <script src="./app.js?v=087-presence-training" defer></script>
+  <script src="./rules.js?v=089-spectator" defer></script>
+  <script src="./app.js?v=089-spectator" defer></script>
 </body>
 </html>

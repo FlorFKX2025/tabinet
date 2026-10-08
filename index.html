@@ -101,7 +101,7 @@
 
       <footer class="menu-footer">
         <span>Browser-first • PWA</span>
-        <span id="menuVersion">v0.8.0 • PvP + matchmaking + invitații</span>
+        <span id="menuVersion">v0.8.1 • PvP sincronizat în timp real</span>
       </footer>
 
       <aside id="resumeMatchBar" class="resume-match-bar hidden" aria-live="assertive" aria-label="Partidă pusă pe pauză">
@@ -176,10 +176,15 @@
 
     <section id="pvpFriendsScreen" class="screen hidden" aria-labelledby="pvpFriendsTitle">
       <button class="back-button" id="pvpFriendsBackBtn" type="button">← Înapoi</button>
-      <div class="screen-heading">
+      <div class="screen-heading pvp-section-heading">
         <p class="eyebrow">PRIETENI</p>
         <h2 id="pvpFriendsTitle">Alege un prieten</h2>
         <p id="pvpFriendsCopy">Invitația apare în meniul principal al prietenului și poate fi acceptată sau refuzată.</p>
+      </div>
+      <div class="pvp-friends-summary">
+        <div class="pvp-summary-item"><span class="pvp-summary-icon">👥</span><div><strong id="pvpFriendsCount">0</strong><small>Prieteni</small></div></div>
+        <div class="pvp-summary-item"><span class="pvp-summary-icon">●</span><div><strong id="pvpFriendsOnlineCount">0</strong><small>Online acum</small></div></div>
+        <div class="pvp-summary-note"><span>VS</span><div><strong>Provocare directă</strong><small>Alege un singur prieten. Invitația ajunge instant în meniul lui.</small></div></div>
       </div>
       <div id="pvpFriendsList" class="pvp-friends-list"></div>
     </section>
@@ -190,12 +195,14 @@
         <h2 id="pvpMatchmakingTitle">Căutăm un adversar</h2>
         <p id="pvpSearchingHint">Te conectăm cu primul jucător disponibil.</p>
       </div>
-      <div class="pvp-search-card">
+      <div class="pvp-match-card">
+        <div class="pvp-match-card-top"><span class="pvp-match-badge">LIVE</span><span class="pvp-match-pulse" aria-hidden="true"></span></div>
         <div class="pvp-search-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
         <strong id="pvpMatchmakingStatus">Se caută un adversar…</strong>
-        <small>Rămâi aici până găsim o masă.</small>
+        <small>Ține această pagină deschisă. Când apare un jucător disponibil, masa pornește automat.</small>
+        <div class="pvp-match-steps"><span class="active">1 <b>Cauți</b></span><i></i><span>2 <b>Potrivire</b></span><i></i><span>3 <b>Masă</b></span></div>
       </div>
-      <button class="secondary" id="pvpMatchmakingCancelBtn" type="button">← Înapoi</button>
+      <button class="secondary pvp-cancel-wide" id="pvpMatchmakingCancelBtn" type="button">← Înapoi</button>
     </section>
 
     <!-- Difficulty select -->

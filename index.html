@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#071b13">
   <meta name="description" content="Tabinet — joc de cărți românesc, direct în browser.">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/icon.svg?v=085-mobile-scroll" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=085-mobile-scroll">
-  <title>Tabinet • v0.7.6</title>
+  <link rel="icon" href="./icons/icon.svg?v=086-watch-training" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=086-watch-training">
+  <title>Tabinet • v0.8.6</title>
 <script>
   (function () {
-    const RESET_KEY = 'tabinet-pages-reset-085-mobile-scroll';
+    const RESET_KEY = 'tabinet-pages-reset-086-watch-training';
     if (!('serviceWorker' in navigator) || !('caches' in window)) return;
     if (localStorage.getItem(RESET_KEY) === '1') return;
     localStorage.setItem(RESET_KEY, '1');
@@ -102,7 +102,7 @@
 
       <footer class="menu-footer">
         <span>Browser-first • PWA</span>
-        <span id="menuVersion">v0.8.1 • PvP sincronizat în timp real</span>
+        <span id="menuVersion">v0.8.6 • PvP + replay + antrenament</span>
       </footer>
 
       <aside id="resumeMatchBar" class="resume-match-bar hidden" aria-live="assertive" aria-label="Partidă pusă pe pauză">
@@ -502,7 +502,7 @@
         <p id="ruleLastHandCopy">Cine face ultima captură ia automat și toate cărțile rămase pe masă și punctele speciale ale lor.</p>
       </article>
     </div>
-    <button class="primary full-btn" id="closeRulesBtn" type="button">Am înțeles</button>
+    <div class="rules-actions"><button class="secondary full-btn" id="trainingLaunchBtn" type="button">Loc de antrenament</button><button class="primary full-btn" id="closeRulesBtn" type="button">Am înțeles</button></div>
   </dialog>
 
   <!-- Settings -->
@@ -562,6 +562,28 @@
     </div>
     <div id="historyEntries" class="history-entries"></div>
     <div class="dialog-actions"><button class="primary" id="closeHistoryBtn" type="button">Închide</button></div>
+  </dialog>
+
+  <dialog id="replayDialog" class="choice-dialog replay-dialog" tabindex="-1">
+    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+    <div class="dialog-kicker">WATCH</div>
+    <div class="replay-head"><div><h2 id="replayTitle">Vizualizare partidă</h2><p class="dialog-copy" id="replayCopy">Urmărește fiecare mutare.</p></div><span class="replay-round-chip">Mâna <b id="replayRound">1</b></span></div>
+    <div class="replay-topbar"><div><div class="replay-opponent"><span id="replayOpponentName">Bot</span><strong id="replayOpponentScore">0</strong></div><div class="replay-your-score"><span id="replayPlayerScore">0</span><small>YOU</small></div></div><div class="replay-deck-meta"><strong id="replayDeckCount">0</strong><small>în pachet</small></div></div>
+    <div class="replay-board" id="replayBoard"></div>
+    <div class="replay-event-current" id="replayEvent" aria-live="polite"></div>
+    <div class="replay-timeline"><div class="replay-progress-track"><span id="replayProgressFill"></span></div><input id="replayScrub" class="replay-scrub" type="range" min="0" max="100" value="0" aria-label="Progres replay"><div class="replay-timeline-meta"><span id="replayCurrent">1 / 1</span><span id="replayRemaining">Rămas: 0:00</span></div></div>
+    <div class="replay-controls"><div class="replay-speeds"><span id="replaySpeedLabel">Viteză</span><button class="secondary replay-speed-btn" type="button" data-speed="0.5">0.5×</button><button class="secondary replay-speed-btn active" type="button" data-speed="1">1×</button><button class="secondary replay-speed-btn" type="button" data-speed="2">2×</button></div><div class="replay-main-controls"><button class="secondary" id="replayRestartBtn" type="button">↺</button><button class="primary" id="replayPlayBtn" type="button">Redă</button></div></div>
+    <section class="replay-events-panel"><div class="replay-events-head"><strong>Mutări înregistrate</strong><small>apasă pe o mutare pentru a sări direct la ea</small></div><div id="replayEventList" class="replay-event-list"></div></section>
+    <div class="dialog-actions"><button class="secondary" id="replayCloseBtn" type="button">Închide</button></div>
+  </dialog>
+
+  <dialog id="trainingDialog" class="choice-dialog training-dialog" tabindex="-1">
+    <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
+    <div class="dialog-kicker" id="trainingKicker">ANTRENAMENT</div>
+    <div class="training-head"><div><h2 id="trainingTitle">Învață să joci Tabinet</h2><p class="dialog-copy" id="trainingCopy">Parcurge regulile pas cu pas.</p></div><div class="training-scorebox"><strong id="trainingScore">Scor: 0/6</strong><span id="trainingProgressText">Regula 1 din 6</span></div></div>
+    <div class="training-progress"><span id="trainingProgressFill"></span></div>
+    <div class="training-card-shell"><div class="training-prompt" id="trainingPrompt"></div><div id="trainingBoard" class="training-board"></div><div id="trainingChoices" class="training-choices"></div><button class="secondary training-hint-btn" id="trainingHintBtn" type="button">Indiciu</button><div id="trainingHint" class="training-hint"></div><div id="trainingFeedback" class="training-feedback" aria-live="polite"></div></div>
+    <div class="dialog-actions training-actions"><button class="secondary" id="trainingPrevBtn" type="button">Înapoi</button><button class="secondary" id="trainingCloseBtn" type="button">Ieși</button><button class="primary" id="trainingNextBtn" type="button" disabled>Următoarea</button></div>
   </dialog>
 
   <!-- Profile -->
@@ -639,7 +661,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./rules.js?v=085-mobile-scroll" defer></script>
-  <script src="./app.js?v=085-mobile-scroll" defer></script>
+  <script src="./rules.js?v=086-watch-training" defer></script>
+  <script src="./app.js?v=086-watch-training" defer></script>
 </body>
 </html>

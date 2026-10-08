@@ -1,4 +1,4 @@
-const CACHE = 'tabinet-v0.8.2-pages-pvp';
+const CACHE = 'tabinet-v0.8.4-pvp-cooldown';
 const ASSETS = ['./', './index.html', './styles.css?v=084-pvp-cooldown', './rules.js?v=084-pvp-cooldown', './app.js?v=084-pvp-cooldown', './manifest.webmanifest', './icons/icon.svg?v=084-pvp-cooldown'];
 
 self.addEventListener('install', event => {

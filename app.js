@@ -1619,6 +1619,7 @@ function renderGame() {
   const battleLogTitle = $('battleLogTitle'); if (battleLogTitle) battleLogTitle.textContent = t('battleLogTitle');
   const recentMatches = $('recentMatches'); if (recentMatches) recentMatches.textContent = t('recentMatches');
   const gameIsPvp=state.selectedMode==='pvp';
+  if ($('restartMatchBtn')) $('restartMatchBtn').textContent = gameIsPvp ? t('abandon') : t('newGame');
   $('botMeta').textContent=gameIsPvp?t('pvpPlayerLabel'):difficultyLabel(state.difficulty);
   if($('opponentChipName'))$('opponentChipName').textContent=gameIsPvp?pvpOpponentName():t('botLabel');
   if($('opponentRailLabel'))$('opponentRailLabel').textContent=gameIsPvp?pvpOpponentName():t('botLabel');
@@ -2576,7 +2577,7 @@ $('closeRulesBtn').addEventListener('click', () => {
   forceModalCleanup();
 });
 $('gameMenuBtn').addEventListener('click', () => { playTone('button'); if(isPvpMode()) void abandonPvpMatch(); else pauseCurrentMatch(); });
-$('restartMatchBtn').addEventListener('click', () => { playTone('button'); void startMatch(state.difficulty); });
+$('restartMatchBtn').addEventListener('click', () => { playTone('button'); if (isPvpMode()) void abandonPvpMatch(); else void startMatch(state.difficulty); });
 $('rejoinMatchBtn').addEventListener('click', () => { playTone('button'); restoreMatchFromPause(); });
 $('abandonMatchBtn').addEventListener('click', () => { playTone('button'); abandonPausedMatch('manual'); });
 $('gameOverMenuBtn').addEventListener('click', () => { playTone('button'); goToMenu(); });

@@ -92,6 +92,7 @@ let friendsRefreshTimer = null;
 let friendsHeartbeatTimer = null;
 let friendsBackgroundRefreshTimer = null;
 let pvpDashboardTimer = null;
+let pvpAbandonTimer = null;
 let pvpActionBusy = false;
 window.__tabinetPvpDashboard = { incoming_invites: [], outgoing_invites: [], queue_waiting: false, active_match: null };
 
@@ -654,12 +655,30 @@ async function abandonPvpMatch(){
 function renderPvpAbandonOverlay(){
   const overlay=$('pvpAbandonOverlay');if(!overlay)return;
   const active=isPvpMode()&&state.pvpAbandonExpiresAt&&!state.pvpTerminalHandled;
-  if(!active){overlay.classList.add('hidden');return;}
-  const remaining=Math.max(0,new Date(state.pvpAbandonExpiresAt).getTime()-Date.now()),seconds=Math.ceil(remaining/1000);
-  $('pvpAbandonCountdown').textContent=String(seconds);
-  $('pvpAbandonCopy').textContent=t('pvpAbandonWaiting').replace('{name}',pvpOpponentName());
-  overlay.classList.remove('hidden');
-  if(seconds<=0)void refreshPvpDashboard();
+  if(!active){
+    overlay.classList.add('hidden');
+    if(pvpAbandonTimer){clearInterval(pvpAbandonTimer);pvpAbandonTimer=null;}
+    return;
+  }
+  const update=()=>{
+    if(!state.pvpAbandonExpiresAt||state.pvpTerminalHandled||!isPvpMode()){
+      if(pvpAbandonTimer){clearInterval(pvpAbandonTimer);pvpAbandonTimer=null;}
+      overlay.classList.add('hidden');
+      return;
+    }
+    const remaining=Math.max(0,new Date(state.pvpAbandonExpiresAt).getTime()-Date.now());
+    const seconds=Math.max(0,Math.ceil(remaining/1000));
+    $('pvpAbandonCountdown').textContent=String(seconds);
+    $('pvpAbandonCopy').textContent=t('pvpAbandonWaiting').replace('{name}',pvpOpponentName());
+    overlay.classList.remove('hidden');
+    overlay.classList.toggle('expiring',seconds<=3);
+    if(remaining<=0){
+      if(pvpAbandonTimer){clearInterval(pvpAbandonTimer);pvpAbandonTimer=null;}
+      void refreshPvpDashboard();
+    }
+  };
+  update();
+  if(!pvpAbandonTimer)pvpAbandonTimer=setInterval(update,100);
 }
 
 async function cancelPvpInvite(inviteId){

@@ -1,5 +1,5 @@
 const CACHE = 'tabinet-v0.8.9-spectator';
-const ASSETS = ['./', './index.html', './styles.css?v=087-presence-training', './rules.js?v=087-presence-training', './app.js?v=087-presence-training', './manifest.webmanifest', './icons/icon.svg?v=087-presence-training'];
+const ASSETS = ['./', './index.html', './styles.css?v=089-spectator', './rules.js?v=089-spectator', './app.js?v=089-spectator', './manifest.webmanifest', './icons/icon.svg?v=089-spectator'];
 
 self.addEventListener('install', event => {
   event.waitUntil(

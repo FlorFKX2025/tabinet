@@ -2415,3 +2415,24 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   .friend-profile-scroll{max-height:calc(100dvh - 22px)}
   .friend-profile-identity{grid-template-columns:1fr}
 }
+
+/* PvP */
+.pvp-invite-notification{width:min(100%,980px);margin:12px auto 0;display:grid;gap:10px}
+.pvp-invite-notification.hidden{display:none}
+.pvp-invite-item{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 18px;border:1px solid rgba(233,199,111,.32);border-radius:18px;background:linear-gradient(135deg,rgba(28,88,66,.96),rgba(23,63,89,.92));box-shadow:0 16px 40px rgba(0,0,0,.14)}
+.pvp-invite-copy{display:grid;gap:3px;min-width:0}
+.pvp-invite-copy strong{font-size:1rem}
+.pvp-invite-copy small{opacity:.76}
+.pvp-invite-kicker{font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;opacity:.72}
+.pvp-invite-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.pvp-friends-list{display:grid;gap:10px;width:min(100%,980px);margin:0 auto}
+.pvp-friend-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;border:1px solid rgba(28,88,66,.16);border-radius:16px;background:rgba(255,255,255,.62);box-shadow:0 10px 24px rgba(0,0,0,.06)}
+.pvp-friend-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.pvp-friend-actions .friend-status{white-space:nowrap}
+.pvp-search-card{width:min(100%,720px);margin:16px auto 20px;padding:30px;border-radius:22px;border:1px solid rgba(28,88,66,.14);background:linear-gradient(160deg,rgba(255,255,255,.78),rgba(245,236,209,.64));display:grid;justify-items:center;gap:8px;box-shadow:0 20px 48px rgba(0,0,0,.08)}
+.pvp-search-orbit{width:76px;height:76px;border:1px solid rgba(28,88,66,.16);border-radius:50%;display:grid;place-items:center;position:relative;overflow:hidden}
+.pvp-search-orbit span{position:absolute;width:10px;height:10px;border-radius:50%;background:currentColor;animation:pvp-orbit 1.9s linear infinite}
+.pvp-search-orbit span:nth-child(2){animation-delay:.35s}
+.pvp-search-orbit span:nth-child(3){animation-delay:.7s}
+@keyframes pvp-orbit{from{transform:rotate(0deg) translateX(28px)}to{transform:rotate(360deg) translateX(28px)}}
+@media (max-width:720px){.pvp-invite-item,.pvp-friend-row{align-items:flex-start;flex-direction:column}.pvp-invite-actions,.pvp-friend-actions{width:100%;justify-content:flex-start}}

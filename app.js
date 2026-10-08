@@ -2891,7 +2891,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=086-watch-training').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=087-presence-training').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

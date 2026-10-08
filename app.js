@@ -1729,8 +1729,9 @@ function renderGame() {
   $('botMeta').textContent=gameIsPvp?t('pvpPlayerLabel'):difficultyLabel(state.difficulty);
   const opponentAvatar=$('opponentAvatar');
   if(opponentAvatar){
+    opponentAvatar.classList.toggle('bot-avatar', !gameIsPvp);
     if(gameIsPvp&&state.pvpOpponent?.avatar)renderAvatar(opponentAvatar,state.pvpOpponent.avatar);
-    else{opponentAvatar.innerHTML='BOT';opponentAvatar.classList.add('bot-avatar');}
+    else opponentAvatar.innerHTML='BOT';
   }
   if($('opponentChipName'))$('opponentChipName').textContent=gameIsPvp?pvpOpponentName():t('botLabel');
   if($('opponentRailLabel'))$('opponentRailLabel').textContent=gameIsPvp?pvpOpponentName():t('botLabel');

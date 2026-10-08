@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#071b13">
   <meta name="description" content="Tabinet — joc de cărți românesc, direct în browser.">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/icon.svg?v=086-watch-training" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=086-watch-training">
-  <title>Tabinet • v0.8.6</title>
+  <link rel="icon" href="./icons/icon.svg?v=087-presence-training" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=087-presence-training">
+  <title>Tabinet • v0.8.7</title>
 <script>
   (function () {
-    const RESET_KEY = 'tabinet-pages-reset-086-watch-training';
+    const RESET_KEY = 'tabinet-pages-reset-087-presence-training';
     if (!('serviceWorker' in navigator) || !('caches' in window)) return;
     if (localStorage.getItem(RESET_KEY) === '1') return;
     localStorage.setItem(RESET_KEY, '1');
@@ -102,7 +102,7 @@
 
       <footer class="menu-footer">
         <span>Browser-first • PWA</span>
-        <span id="menuVersion">v0.8.6 • PvP + replay + antrenament</span>
+        <span id="menuVersion">v0.8.7 • replay + antrenament + prezență</span>
       </footer>
 
       <aside id="resumeMatchBar" class="resume-match-bar hidden" aria-live="assertive" aria-label="Partidă pusă pe pauză">
@@ -580,10 +580,24 @@
   <dialog id="trainingDialog" class="choice-dialog training-dialog" tabindex="-1">
     <span class="dialog-focus-sentinel" tabindex="0" autofocus aria-hidden="true"></span>
     <div class="dialog-kicker" id="trainingKicker">ANTRENAMENT</div>
-    <div class="training-head"><div><h2 id="trainingTitle">Învață să joci Tabinet</h2><p class="dialog-copy" id="trainingCopy">Parcurge regulile pas cu pas.</p></div><div class="training-scorebox"><strong id="trainingScore">Scor: 0/6</strong><span id="trainingProgressText">Regula 1 din 6</span></div></div>
+    <div class="training-head"><div><h2 id="trainingTitle">Învață să joci Tabinet</h2><p class="dialog-copy" id="trainingCopy">Joacă scenarii reale cu antrenorul Tibi.</p></div><div class="training-scorebox"><strong id="trainingScore">Scor: 0/6</strong><span id="trainingProgressText">Regula 1 din 6</span></div></div>
     <div class="training-progress"><span id="trainingProgressFill"></span></div>
-    <div class="training-card-shell"><div class="training-prompt" id="trainingPrompt"></div><div id="trainingBoard" class="training-board"></div><div id="trainingChoices" class="training-choices"></div><button class="secondary training-hint-btn" id="trainingHintBtn" type="button">Indiciu</button><div id="trainingHint" class="training-hint"></div><div id="trainingFeedback" class="training-feedback" aria-live="polite"></div></div>
-    <div class="dialog-actions training-actions"><button class="secondary" id="trainingPrevBtn" type="button">Înapoi</button><button class="secondary" id="trainingCloseBtn" type="button">Ieși</button><button class="primary" id="trainingNextBtn" type="button" disabled>Următoarea</button></div>
+    <div class="training-match-layout">
+      <aside class="training-coach-panel">
+        <div class="training-coach-avatar" aria-hidden="true"><div class="training-coach-glow"></div><div class="training-coach-badge">T</div><span class="training-coach-spark spark-a">✦</span><span class="training-coach-spark spark-b">✦</span></div>
+        <div class="training-coach-name">Tibi</div><small class="training-coach-role">Antrenor de Tabinet</small>
+        <div class="training-coach-bubble"><span class="training-coach-bubble-label">TIBI</span><p id="trainingCoachSpeech">Salut! Eu sunt Tibi.</p></div>
+      </aside>
+      <section class="training-match-panel">
+        <div class="training-prompt" id="trainingPrompt"></div>
+        <div id="trainingBoard" class="training-board"></div>
+        <div class="training-action-tray"><span class="training-action-label">Alege mutarea</span><div id="trainingChoices" class="training-choices"></div></div>
+        <button class="secondary training-hint-btn" id="trainingHintBtn" type="button">Indiciu</button>
+        <div id="trainingHint" class="training-hint"></div>
+        <div id="trainingFeedback" class="training-feedback" aria-live="polite"></div>
+      </section>
+    </div>
+    <div class="training-footer"><div class="training-footer-note"><span class="training-footer-dot"></span><small>Exersezi fără să afectezi logurile sau statisticile.</small></div><div class="dialog-actions training-actions"><button class="secondary" id="trainingPrevBtn" type="button">Înapoi</button><button class="secondary" id="trainingCloseBtn" type="button">Ieși</button><button class="primary" id="trainingNextBtn" type="button" disabled>Următoarea</button></div></div>
   </dialog>
 
   <!-- Profile -->
@@ -661,7 +675,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./rules.js?v=086-watch-training" defer></script>
-  <script src="./app.js?v=086-watch-training" defer></script>
+  <script src="./rules.js?v=087-presence-training" defer></script>
+  <script src="./app.js?v=087-presence-training" defer></script>
 </body>
 </html>

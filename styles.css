@@ -2436,3 +2436,49 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
 .pvp-search-orbit span:nth-child(3){animation-delay:.7s}
 @keyframes pvp-orbit{from{transform:rotate(0deg) translateX(28px)}to{transform:rotate(360deg) translateX(28px)}}
 @media (max-width:720px){.pvp-invite-item,.pvp-friend-row{align-items:flex-start;flex-direction:column}.pvp-invite-actions,.pvp-friend-actions{width:100%;justify-content:flex-start}}
+
+/* v0.8.1 PvP interaction polish */
+.pvp-section-heading{margin-bottom:18px}
+.pvp-friends-summary{width:min(980px,100%);margin:0 auto 14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) minmax(260px,1.5fr);gap:10px}
+.pvp-summary-item,.pvp-summary-note{border:1px solid rgba(233,199,111,.12);border-radius:16px;background:linear-gradient(145deg,rgba(233,199,111,.08),rgba(255,255,255,.025));min-height:74px;padding:12px 14px;display:flex;align-items:center;gap:10px}
+.pvp-summary-icon{width:34px;height:34px;display:grid;place-items:center;border-radius:11px;background:rgba(233,199,111,.08);color:var(--accent);font-size:.92rem}
+.pvp-summary-item strong{display:block;color:var(--accent);font-size:1.1rem;line-height:1}
+.pvp-summary-item small,.pvp-summary-note small{display:block;margin-top:4px;color:var(--muted);font-size:.62rem}
+.pvp-summary-note>span{width:38px;height:38px;display:grid;place-items:center;border:1px solid rgba(233,199,111,.2);border-radius:12px;color:var(--accent);font-size:.68rem;font-weight:950;letter-spacing:.08em}
+.pvp-summary-note strong{font-size:.76rem}
+.pvp-summary-note div{min-width:0}
+.pvp-friend-row{transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease}
+.pvp-friend-row:hover{transform:translateY(-1px);border-color:rgba(233,199,111,.28);background:linear-gradient(145deg,rgba(233,199,111,.1),rgba(255,255,255,.04));box-shadow:0 14px 30px rgba(0,0,0,.08)}
+.pvp-friend-row .friend-user{min-width:0}
+.pvp-friend-row .friend-user-copy{min-width:0}
+.pvp-friend-row .friend-user-copy strong{font-size:.96rem}
+.pvp-friend-row .friend-user-copy small{letter-spacing:.04em}
+.pvp-friend-actions .primary{min-width:110px}
+.pvp-match-card{width:min(720px,100%);margin:12px auto 18px;padding:26px 26px 22px;border-radius:24px;border:1px solid rgba(233,199,111,.16);background:radial-gradient(circle at 50% 0,rgba(233,199,111,.08),transparent 48%),linear-gradient(160deg,rgba(16,84,58,.95),rgba(9,35,27,.98));box-shadow:var(--shadow);display:grid;justify-items:center;gap:9px;text-align:center;position:relative;overflow:hidden}
+.pvp-match-card-top{width:100%;display:flex;align-items:center;justify-content:space-between}
+.pvp-match-badge{font-size:.58rem;letter-spacing:.13em;font-weight:950;color:var(--accent);padding:6px 9px;border-radius:999px;border:1px solid rgba(233,199,111,.2);background:rgba(233,199,111,.08)}
+.pvp-match-pulse{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 0 currentColor;animation:pvp-status-pulse 1.7s infinite}
+@keyframes pvp-status-pulse{0%{box-shadow:0 0 0 0 currentColor;opacity:.95}70%{box-shadow:0 0 0 11px transparent;opacity:.3}100%{box-shadow:0 0 0 0 transparent;opacity:.95}}
+.pvp-match-card strong{font-size:1.08rem}
+.pvp-match-card small{max-width:510px;color:rgba(255,255,255,.7);line-height:1.45}
+.pvp-match-steps{width:min(560px,100%);display:flex;align-items:center;justify-content:center;gap:8px;margin-top:9px}
+.pvp-match-steps span{display:flex;align-items:center;gap:5px;padding:7px 9px;border-radius:10px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.48);font-size:.58rem}
+.pvp-match-steps span b{font-weight:800}
+.pvp-match-steps span.active{color:var(--accent);background:rgba(233,199,111,.08);border:1px solid rgba(233,199,111,.1)}
+.pvp-match-steps i{width:22px;height:1px;background:rgba(255,255,255,.12)}
+.pvp-cancel-wide{min-width:180px}
+.pvp-remote-update{animation:pvp-remote-flash .52s ease}
+@keyframes pvp-remote-flash{0%{box-shadow:0 0 0 0 rgba(233,199,111,.0),var(--shadow)}35%{box-shadow:0 0 0 4px rgba(233,199,111,.18),var(--shadow)}100%{box-shadow:0 0 0 0 rgba(233,199,111,.0),var(--shadow)}}
+@media(max-width:760px){
+  .pvp-friends-summary{grid-template-columns:1fr 1fr}
+  .pvp-summary-note{grid-column:1/-1}
+}
+@media(max-width:540px){
+  .pvp-friends-summary{grid-template-columns:1fr}
+  .pvp-summary-note{grid-column:auto}
+  .pvp-summary-item{min-height:68px}
+  .pvp-match-card{padding:22px 16px 18px}
+  .pvp-match-steps{gap:4px}
+  .pvp-match-steps i{width:12px}
+  .pvp-match-steps span{font-size:.52rem;padding:6px 7px}
+}

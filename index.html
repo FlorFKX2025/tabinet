@@ -8,7 +8,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg?v=087-presence-training" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css?v=087-presence-training">
-  <title>Tabinet • v0.8.7</title>
+  <title>Tabinet • v0.8.8</title>
 <script>
   (function () {
     const RESET_KEY = 'tabinet-pages-reset-087-presence-training';
@@ -102,7 +102,7 @@
 
       <footer class="menu-footer">
         <span>Browser-first • PWA</span>
-        <span id="menuVersion">v0.8.7 • replay + antrenament + prezență</span>
+        <span id="menuVersion">v0.8.8 • replay + antrenament live + prezență</span>
       </footer>
 
       <aside id="resumeMatchBar" class="resume-match-bar hidden" aria-live="assertive" aria-label="Partidă pusă pe pauză">
@@ -280,6 +280,28 @@
         </div>
 
         <div class="turn-banner" id="turnBanner">Este rândul tău</div>
+        <section id="trainingLessonGuide" class="training-lesson-guide hidden" aria-live="polite">
+          <div class="training-lesson-kicker"><span id="trainingLessonStep">REGULA 1/6</span><span class="training-lesson-dot">•</span><strong id="trainingLessonRule">Captură</strong></div>
+          <strong id="trainingLessonPrompt">Joacă 7♥</strong>
+          <small id="trainingLessonTip">Cartea evidențiată este cea pe care ți-o cere Tibi.</small>
+        </section>
+        <aside id="trainingGameCoach" class="training-game-coach hidden" aria-live="polite">
+          <div class="training-game-character" aria-hidden="true">
+            <div class="training-character-shadow"></div>
+            <div class="training-character-body"><span class="training-character-tie">♦</span></div>
+            <div class="training-character-head">
+              <span class="training-character-hair"></span><span class="training-character-ear left"></span><span class="training-character-ear right"></span>
+              <span class="training-character-eye left"></span><span class="training-character-eye right"></span><span class="training-character-glasses"></span><span class="training-character-smile"></span>
+            </div>
+            <div class="training-character-hat"><span>♠</span></div>
+          </div>
+          <div class="training-coach-text">
+            <div class="training-coach-game-meta"><span>TIBI</span><small id="trainingCoachGamePhase">GHID</small></div>
+            <strong id="trainingCoachGameTitle">Tibi</strong>
+            <p id="trainingCoachGameSpeech">Salut!</p>
+          </div>
+          <button class="training-game-coach-close" id="trainingGameCoachCloseBtn" type="button">Ieși din antrenament</button>
+        </aside>
         <div id="pvpAbandonOverlay" class="pvp-abandon-overlay hidden" aria-live="assertive">
           <div class="pvp-abandon-inner">
             <span class="pvp-invite-kicker">PVP</span>

@@ -98,6 +98,15 @@ let pvpAbandonTimer = null;
 let pvpActionBusy = false;
 let presenceTimer = null;
 let currentPresence = null;
+let pvpFriendsRenderKey = '';
+let pvpLiveChannel = null;
+let pvpLiveMatchId = null;
+let spectatorPollTimer = null;
+let spectatorRefreshBusy = false;
+let spectatorLiveChannel = null;
+let spectatorLiveMatchId = null;
+const spectatorState = { active:false, targetPlayerId:null, matchId:null, version:0, data:null };
+const HISTORY_CLEAR_KEY = 'tabinet-history-cleared-at-v1';
 
 const trainingSession = {
   active:false,
@@ -441,6 +450,75 @@ function respondToFriendRequest(requestId, accept) {
 }
 
 
+function stopPvpLiveChannel(){if(pvpLiveChannel&&tabinetSupabase){try{void tabinetSupabase.removeChannel(pvpLiveChannel);}catch{}}pvpLiveChannel=null;pvpLiveMatchId=null;}
+function ensurePvpLiveChannel(matchId){
+  if(!tabinetSupabase||!matchId)return null;
+  if(pvpLiveChannel&&String(pvpLiveMatchId)===String(matchId))return pvpLiveChannel;
+  stopPvpLiveChannel();
+  try{pvpLiveMatchId=String(matchId);pvpLiveChannel=tabinetSupabase.channel('tabinet-pvp-live-'+matchId,{config:{broadcast:{self:false}}});pvpLiveChannel.subscribe();}catch{pvpLiveChannel=null;pvpLiveMatchId=null;}
+  return pvpLiveChannel;
+}
+function broadcastPvpLivePulse(version,status='active'){const channel=ensurePvpLiveChannel(state.pvpMatchId);if(!channel)return;try{void channel.send({type:'broadcast',event:'pvp-pulse',payload:{version:Number(version||0),status:String(status||'active')}});}catch{}}
+function stopSpectatorLiveChannel(){if(spectatorLiveChannel&&tabinetSupabase){try{void tabinetSupabase.removeChannel(spectatorLiveChannel);}catch{}}spectatorLiveChannel=null;spectatorLiveMatchId=null;}
+function ensureSpectatorLiveChannel(matchId){
+  if(!tabinetSupabase||!matchId)return null;
+  if(spectatorLiveChannel&&String(spectatorLiveMatchId)===String(matchId))return spectatorLiveChannel;
+  stopSpectatorLiveChannel();
+  try{
+    spectatorLiveMatchId=String(matchId);
+    spectatorLiveChannel=tabinetSupabase.channel('tabinet-pvp-live-'+matchId);
+    spectatorLiveChannel.on('broadcast',{event:'pvp-pulse'},payload=>{const hinted=Number(payload?.payload?.version||0);if(hinted>Number(spectatorState.version||0))void refreshSpectatorState(true);});
+    spectatorLiveChannel.subscribe();
+  }catch{spectatorLiveChannel=null;spectatorLiveMatchId=null;}
+  return spectatorLiveChannel;
+}
+function spectatorText(key,vars={}){
+  const ro={spectatorKicker:'LIVE SPECTATE',spectatorTitle:'Meci live',spectatorPrivacy:'Vezi doar mâna lui {name}. Adversarul rămâne ascuns.',spectatorButton:'Spectează',spectatorPlayer:'Jucător urmărit',spectatorOpponent:'Adversar',spectatorWatching:'Urmărești partida în timp real.',spectatorConnecting:'Se conectează la masa live…',spectatorLoading:'Se încarcă partida live…',spectatorNoMatchTitle:'Meciul nu mai este activ',spectatorNoMatch:'Jucătorul nu mai are un meci PvP activ.',spectatorError:'Nu am putut încărca partida live.',spectatorNotFriends:'Poți specta doar prieteni.',spectatorPlayerTurn:'Rândul lui {name}',spectatorOpponentTurn:'Rândul adversarului ({name})',spectatorRound:'Mâna {round}'};
+  const en={spectatorKicker:'LIVE SPECTATE',spectatorTitle:'Live match',spectatorPrivacy:'You can see only {name}’s hand. The opponent stays hidden.',spectatorButton:'Spectate',spectatorPlayer:'Watched player',spectatorOpponent:'Opponent',spectatorWatching:'Watching the match in real time.',spectatorConnecting:'Connecting to the live table…',spectatorLoading:'Loading live match…',spectatorNoMatchTitle:'The match is no longer active',spectatorNoMatch:'This player no longer has an active PvP match.',spectatorError:'Could not load the live match.',spectatorNotFriends:'You can spectate friends only.',spectatorPlayerTurn:'{name}’s turn',spectatorOpponentTurn:'Opponent’s turn ({name})',spectatorRound:'Hand {round}'};
+  let value=(settings.language==='en'?en:ro)[key]||key;Object.entries(vars).forEach(([name,val])=>value=value.replaceAll('{'+name+'}',String(val)));return value;
+}
+function spectatorCardMarkup(card){if(!card)return '';return '<span class="spectator-card'+(card.red?' red':'')+'"><b>'+escapeHtml(card.rank||'')+'</b><i>'+escapeHtml(card.symbol||'')+'</i></span>';}
+function spectatorStackMarkup(stack){const cards=Array.isArray(stack?.cards)?stack.cards:[];return cards.length?'<div class="spectator-stack">'+cards.map(spectatorCardMarkup).join('')+(cards.length>1?'<span class="spectator-stack-count">×'+cards.length+'</span>':'')+'</div>':'';}
+function renderSpectator(){
+  const board=$('spectatorBoard');if(!board||!spectatorState.data)return;
+  const s=spectatorState.data,target=s.target||{},opponent=s.opponent||{},stacks=Array.isArray(s.table_stacks)?s.table_stacks:[];
+  if($('spectatorPrivacy'))$('spectatorPrivacy').textContent=spectatorText('spectatorPrivacy',{name:target.name||t('you')});
+  if($('spectatorTargetName'))$('spectatorTargetName').textContent=target.name||t('playerMode');
+  if($('spectatorTargetId'))$('spectatorTargetId').textContent=target.player_id||'';
+  if($('spectatorTargetScore'))$('spectatorTargetScore').textContent=String(target.score??0);
+  if($('spectatorRound'))$('spectatorRound').textContent=String(s.round||1);
+  const turnId=String(s.turn_player_id||'').toUpperCase();
+  if($('spectatorTurn'))$('spectatorTurn').textContent=turnId===String(target.player_id||'').toUpperCase()?spectatorText('spectatorPlayerTurn',{name:target.name||''}):spectatorText('spectatorOpponentTurn',{name:opponent.name||''});
+  const avatar=$('spectatorAvatar');if(avatar)renderAvatar(avatar,target.avatar||{kind:'template',id:'01'});
+  board.innerHTML='<div class="spectator-opponent-row"><div class="spectator-player-mini"><div class="spectator-dot"></div><div><strong>'+escapeHtml(opponent.name||t('opponentBot'))+'</strong><small>'+escapeHtml(spectatorText('spectatorOpponent'))+'</small></div></div><div class="spectator-score">'+String(opponent.score??0)+'</div><div class="spectator-hidden-cards">'+Array.from({length:Math.min(8,Number(opponent.card_count||0))},()=>'<span></span>').join('')+'</div></div>'+
+  '<div class="spectator-table-zone"><div class="spectator-table-top"><span>'+escapeHtml(t('replayTable'))+'</span><small>'+escapeHtml(spectatorText('spectatorRound',{round:String(s.round||1)}))+'</small></div><div class="spectator-table-cards">'+(stacks.length?stacks.map(spectatorStackMarkup).join(''):'<span class="spectator-empty">·</span>')+'</div></div>'+
+  '<div class="spectator-player-row"><div class="spectator-player-mini target"><div class="spectator-avatar-slot">'+avatarMarkup(target.avatar||{kind:'template',id:'01'})+'</div><div><strong>'+escapeHtml(target.name||'Jucător')+'</strong><small>'+escapeHtml(spectatorText('spectatorPlayer'))+'</small></div></div><div class="spectator-score target-score">'+String(target.score??0)+'</div><div class="spectator-target-hand">'+(Array.isArray(target.hand)?target.hand.map(spectatorCardMarkup).join(''):'')+'</div></div>';
+  if($('spectatorStatus'))$('spectatorStatus').textContent=String(s.message||spectatorText('spectatorWatching'));
+}
+async function refreshSpectatorState(force=false){
+  if(!spectatorState.active||!spectatorState.targetPlayerId||!tabinetSupabase||document.visibilityState==='hidden')return;
+  if(spectatorRefreshBusy&&!force)return;spectatorRefreshBusy=true;
+  try{
+    const result=await tabinetRpc('tabinet_get_pvp_spectator',{p_viewer_player_id:profile.id,p_device_token:getFriendsDeviceToken(),p_target_player_id:spectatorState.targetPlayerId});
+    if(result?.ok&&result.spectator){
+      spectatorState.data=result.spectator;spectatorState.matchId=result.spectator.match_id;spectatorState.version=Number(result.spectator.version||0);ensureSpectatorLiveChannel(spectatorState.matchId);renderSpectator();
+    }else if(result?.error==='no_active_match'){
+      if($('spectatorStatus'))$('spectatorStatus').textContent=spectatorText('spectatorNoMatch');
+      if($('spectatorBoard'))$('spectatorBoard').innerHTML='<div class="spectator-ended"><strong>'+escapeHtml(spectatorText('spectatorNoMatchTitle'))+'</strong><span>'+escapeHtml(spectatorText('spectatorNoMatch'))+'</span></div>';
+    }else if($('spectatorStatus'))$('spectatorStatus').textContent=spectatorText(result?.error==='not_friends'?'spectatorNotFriends':'spectatorError');
+  }catch{if($('spectatorStatus'))$('spectatorStatus').textContent=spectatorText('spectatorError');}
+  finally{spectatorRefreshBusy=false;}
+}
+function startSpectatorPolling(){if(spectatorPollTimer)clearInterval(spectatorPollTimer);void refreshSpectatorState(true);spectatorPollTimer=setInterval(()=>{if(document.visibilityState==='visible')void refreshSpectatorState(false);},850);}
+function stopSpectating(){if(spectatorPollTimer){clearInterval(spectatorPollTimer);spectatorPollTimer=null;}stopSpectatorLiveChannel();spectatorState.active=false;spectatorState.targetPlayerId=null;spectatorState.matchId=null;spectatorState.version=0;spectatorState.data=null;}
+async function openSpectator(playerId){
+  if(!playerId||String(playerId).toUpperCase()===String(profile.id).toUpperCase()||!tabinetSupabase)return;
+  stopSpectating();spectatorState.active=true;spectatorState.targetPlayerId=playerId;
+  const d=$('spectatorDialog');if(!d)return;
+  if($('spectatorStatus'))$('spectatorStatus').textContent=spectatorText('spectatorConnecting');
+  if($('spectatorBoard'))$('spectatorBoard').innerHTML='<div class="spectator-loading"><span></span><strong>'+escapeHtml(spectatorText('spectatorLoading'))+'</strong></div>';
+  d.showModal();startSpectatorPolling();
+}
 function isPvpMode() { return state.selectedMode === 'pvp'; }
 function pvpOpponentName() { return state.pvpOpponent?.name || (settings.language === 'en' ? 'Player' : 'Jucător'); }
 function pvpOpponentId() { return state.pvpOpponent?.player_id || ''; }
@@ -507,7 +585,7 @@ async function syncPvpInitialize(){
   if(!isPvpMode()||!state.pvpMatchId)return;
   try{
     const result=await tabinetRpc('tabinet_initialize_pvp_match',{p_match_id:state.pvpMatchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken(),p_state:serializePvpState(),p_turn_player_id:pvpTurnPlayerId()});
-    if(result?.ok)state.pvpMatchVersion=Number(result.version||1);
+    if(result?.ok){state.pvpMatchVersion=Number(result.version||1);broadcastPvpLivePulse(state.pvpMatchVersion,'active');}
     else {const latest=await fetchPvpMatch(state.pvpMatchId);if(latest?.state)applyPvpMatchState(latest);}
   }catch{}
 }
@@ -519,7 +597,7 @@ async function syncPvpState(status='active',winnerId=null){
       p_match_id:state.pvpMatchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken(),p_state:serializePvpState(),
       p_turn_player_id:status==='active'?pvpTurnPlayerId():null,p_status:status,p_winner_player_id:winnerId,p_expected_version:Number(state.pvpMatchVersion||0)
     });
-    if(result?.ok)state.pvpMatchVersion=Number(result.version||state.pvpMatchVersion);
+    if(result?.ok){state.pvpMatchVersion=Number(result.version||state.pvpMatchVersion);broadcastPvpLivePulse(state.pvpMatchVersion,status);}
     else if(result?.error==='version_conflict'||result?.error==='not_your_turn'){const latest=await fetchPvpMatch(state.pvpMatchId);if(latest?.state)applyPvpMatchState(latest);}
   }catch{}
 }
@@ -567,6 +645,7 @@ async function enterPvpMatch(matchId){
     state.selectedMode='pvp';state.pvpMatchId=match.id;state.pvpMatchVersion=Number(match.version||0);
     if(enteringNewPvpMatch){state.replayFrames=[];state.replayLastVersion=0;}
     state.pvpOpponent=match.opponent||null;state.pvpTerminalHandled=false;state.pvpLeavingMatchId=null;state.pvpRematchPending=false;
+    ensurePvpLiveChannel(state.pvpMatchId);
     $('gameOverDialog')?.close();
     if(match.status==='abandoned'||match.status==='completed'){await showPvpTerminal(match);return;}
     if(match.status==='abandon_pending'){
@@ -601,17 +680,22 @@ function renderPvpRematchNotification(requests){
 }
 function pvpOutgoingSet(){return new Set((window.__tabinetPvpDashboard?.outgoing_invites||[]).map(item=>String(item.player_id||'').toUpperCase()));}
 function renderPvpFriends(){
-  const list=$('pvpFriendsList');if(!list)return;const friends=Array.isArray(window.__tabinetFriends)?window.__tabinetFriends:[],outgoing=pvpOutgoingSet();list.innerHTML='';
+  const list=$('pvpFriendsList');if(!list)return;
+  const friends=Array.isArray(window.__tabinetFriends)?window.__tabinetFriends:[],outgoing=pvpOutgoingSet();
   if($('pvpFriendsCount'))$('pvpFriendsCount').textContent=String(friends.length);
   if($('pvpFriendsOnlineCount'))$('pvpFriendsOnlineCount').textContent=String(friends.filter(friend=>friend.online).length);
+  const renderKey=friends.map(friend=>{const key=String(friend.player_id||'').toUpperCase(),pending=outgoing.has(key),invite=(window.__tabinetPvpDashboard?.outgoing_invites||[]).find(x=>String(x.player_id||'').toUpperCase()===key);return [key,friend.name||'',JSON.stringify(friend.avatar||{}),Boolean(friend.online),friend.presence_state||'lobby',Boolean(friend.spectate_available),pending,invite?.id||''].join('|');}).join('||');
+  if(renderKey===pvpFriendsRenderKey&&list.children.length===friends.length)return;
+  pvpFriendsRenderKey=renderKey;list.innerHTML='';
   if(!friends.length){list.innerHTML='<div class="friends-empty">'+escapeHtml(t('pvpNoFriends'))+'</div>';return;}
   friends.forEach(friend=>{
     const key=String(friend.player_id||'').toUpperCase(),pending=outgoing.has(key),invite=(window.__tabinetPvpDashboard?.outgoing_invites||[]).find(x=>String(x.player_id||'').toUpperCase()===key);
     const action=pending
       ? '<button class="secondary small-btn pvp-cancel-invite" type="button" data-player-id="'+escapeHtml(friend.player_id||'')+'" data-invite-id="'+escapeHtml(invite?.id||'')+'">'+escapeHtml(t('pvpCancelInvite'))+'</button>'
       : '<button class="primary small-btn pvp-invite-friend" type="button" data-player-id="'+escapeHtml(friend.player_id||'')+'">'+escapeHtml(t('pvpInviteFriend'))+'</button>';
+    const spectate=friend.spectate_available?'<button class="secondary small-btn pvp-spectate-friend" type="button" data-player-id="'+escapeHtml(friend.player_id||'')+'">◉ '+escapeHtml(settings.language==='en'?'Spectate':'Spectează')+'</button>':'';
     const row=document.createElement('article');row.className='pvp-friend-row';
-    row.innerHTML='<div class="friend-user">'+friendAvatarMarkup(friend.avatar)+'<div class="friend-user-copy"><strong>'+escapeHtml(friend.name||'Jucător')+'</strong><small>'+escapeHtml(friend.player_id||'')+'</small></div></div><div class="pvp-friend-actions"><span class="friend-status '+(friend.online?'online':'offline')+'"><i></i>'+escapeHtml(friendLastSeenText(friend.last_seen,Boolean(friend.online)))+'</span>'+action+'</div>';
+    row.innerHTML='<div class="friend-user">'+friendAvatarMarkup(friend.avatar)+'<div class="friend-user-copy"><strong>'+escapeHtml(friend.name||'Jucător')+'</strong><small>'+escapeHtml(friend.player_id||'')+'</small></div></div><div class="pvp-friend-actions"><span class="friend-status '+(friend.online?'online':'offline')+'"><i></i>'+escapeHtml(friendLastSeenText(friend.last_seen,Boolean(friend.online)))+'</span>'+spectate+action+'</div>';
     list.appendChild(row);
   });
 }
@@ -1209,8 +1293,22 @@ function renderAvatar(el, avatar = profile.avatar) {
 }
 
 function profileHistory() {
-  const realMatches = battleHistory.filter(entry => entry.mode === 'player');
-  return realMatches.length ? realMatches : battleHistory.filter(entry => entry.mode === 'bot');
+  return battleHistory.filter(entry => entry.mode === 'player');
+}
+function historyClearedAt() {
+  try { const value=Number(localStorage.getItem(HISTORY_CLEAR_KEY)||0); return Number.isFinite(value)?value:0; } catch { return 0; }
+}
+function visibleHistoryEntries() {
+  const cutoff=historyClearedAt();
+  return battleHistory.filter(entry=>Number(entry.timestamp||entry.id||0)>cutoff);
+}
+function clearMatchHistoryLog() {
+  const visible=visibleHistoryEntries();
+  if(!visible.length)return;
+  const copy=settings.language==='en'?'Are you sure you want to clear the match log list?':'Sigur vrei să cureți lista logurilor de meciuri?';
+  if(!window.confirm(copy))return;
+  try{localStorage.setItem(HISTORY_CLEAR_KEY,String(Date.now()));}catch{}
+  renderHistoryEntries();playTone('button');
 }
 
 function entryResult(entry) {
@@ -1956,9 +2054,10 @@ function renderBattleLog() {
 
 function renderHistoryEntries(){
   const list=$('historyEntries'),total=$('historyTotal');if(!list)return;
-  if(total)total.textContent=battleHistory.length;list.innerHTML='';
-  if(!battleHistory.length){list.innerHTML='<div class="history-empty">'+t('emptyHistory')+'</div>';return;}
-  battleHistory.forEach((entry,index)=>{
+  const entries=visibleHistoryEntries();
+  if(total)total.textContent=entries.length;list.innerHTML='';
+  if(!entries.length){list.innerHTML='<div class="history-empty">'+t('emptyHistory')+'</div>';return;}
+  entries.forEach((entry,index)=>{
     const item=document.createElement('article');item.className='history-entry';
     const mode=entry.mode==='player'?t('playerMode'):t('botMode'),opponent=entry.opponentName||t('opponentBot'),outcome=entryResult(entry);
     const result=outcome==='draw'?t('draw'):outcome==='win'?t('resultYou'):entry.abandoned?t('abandoned'):t('resultBot'),diff=entry.mode==='bot'?difficultyLabel(entry.difficulty):'';
@@ -2775,6 +2874,7 @@ function restoreMatchFromPause() {
 }
 
 function goToMenu() {
+  stopPvpLiveChannel();
   state.matchToken += 1;
   if ($('captureDialog').open) $('captureDialog').close();
   if ($('tableauDialog').open) $('tableauDialog').close();
@@ -2872,9 +2972,10 @@ $('pvpMatchmakingBtn').addEventListener('click', () => { playTone('button'); voi
 $('pvpFriendsBackBtn').addEventListener('click', () => { playTone('button'); showScreen('pvpModeScreen'); });
 $('pvpMatchmakingCancelBtn').addEventListener('click', () => { playTone('button'); void cancelPvpMatchmaking(); });
 $('pvpFriendsList').addEventListener('click', event => {
-  const btn=event.target.closest('.pvp-invite-friend'),cancel=event.target.closest('.pvp-cancel-invite');
+  const btn=event.target.closest('.pvp-invite-friend'),cancel=event.target.closest('.pvp-cancel-invite'),spectate=event.target.closest('.pvp-spectate-friend');
   if(btn){playTone('button');void sendPvpInvite(btn.dataset.playerId);}
   if(cancel){playTone('button');void cancelPvpInvite(cancel.dataset.inviteId);}
+  if(spectate){playTone('button');void openSpectator(spectate.dataset.playerId);}
 });
 
 $('pvpRematchNotification').addEventListener('click', event => {
@@ -3047,7 +3148,8 @@ $('cancelStackBtn').addEventListener('click', () => { playTone('button'); state.
 $('tableauDialog').addEventListener('cancel', event => event.preventDefault());
 
 $('openHistoryBtn').addEventListener('click', () => { playTone('button'); renderHistoryEntries(); $('historyDialog').showModal(); });
-$('historyEntries').addEventListener('click',event=>{const watch=event.target.closest('.history-watch-btn');if(!watch||watch.disabled)return;const entry=battleHistory[Number(watch.dataset.historyIndex)];if(entry)openReplayForEntry(entry);});
+$('historyEntries').addEventListener('click',event=>{const watch=event.target.closest('.history-watch-btn');if(!watch||watch.disabled)return;const entries=visibleHistoryEntries();const entry=entries[Number(watch.dataset.historyIndex)];if(entry)openReplayForEntry(entry);});
+$('clearHistoryBtn').addEventListener('click',()=>clearMatchHistoryLog());
 $('closeHistoryBtn').addEventListener('click', () => { playTone('button'); $('historyDialog').close(); });
 $('replayPlayBtn').addEventListener('click',()=>{playTone('button');setReplayPlaying(!replayState.playing);});
 $('replayRestartBtn').addEventListener('click',()=>{replayState.frameIndex=0;replayState.elapsedMs=0;setReplayPlaying(true);});
@@ -3060,6 +3162,8 @@ $('trainingPrevBtn').addEventListener('click',()=>{if(trainingState.lesson<=0)re
 $('trainingNextBtn').addEventListener('click',()=>{if(!trainingState.answered)return;if(trainingState.lesson>=trainingLessons.length-1){closeTraining();playTone('success');return;}trainingState.lesson++;renderTraining();playTone('button');});
 $('trainingCloseBtn').addEventListener('click',()=>{closeTraining();playTone('button');});
 $('trainingGameCoachCloseBtn').addEventListener('click',()=>{playTone('button');exitTrainingSession();});
+$('spectatorCloseBtn').addEventListener('click',()=>{playTone('button');stopSpectating();$('spectatorDialog')?.close();forceModalCleanup();});
+$('spectatorDialog').addEventListener('close',()=>{stopSpectating();syncModalScrollLock();});
 $('languageSelect').addEventListener('change', event => { settings.language = event.target.value === 'en' ? 'en' : 'ro'; saveSettings(); applyLanguage(); playTone('success'); });
 
 $('tableZone').addEventListener('dragover', event => {
@@ -3093,7 +3197,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=088-training-coach').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=089-spectator').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

@@ -1,5 +1,5 @@
 const CACHE = 'tabinet-v0.8.2-pages-pvp';
-const ASSETS = ['./', './index.html', './styles.css?v=082-pvp', './rules.js?v=082-pvp', './app.js?v=082-pvp', './manifest.webmanifest', './icons/icon.svg?v=082-pvp'];
+const ASSETS = ['./', './index.html', './styles.css?v=083-pvp-features', './rules.js?v=083-pvp-features', './app.js?v=083-pvp-features', './manifest.webmanifest', './icons/icon.svg?v=083-pvp-features'];
 
 self.addEventListener('install', event => {
   event.waitUntil(

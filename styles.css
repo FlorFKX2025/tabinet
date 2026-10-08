@@ -2482,3 +2482,25 @@ body.menu-screen-locked { padding-bottom: 0 !important; }
   .pvp-match-steps i{width:12px}
   .pvp-match-steps span{font-size:.52rem;padding:6px 7px}
 }
+
+/* v0.8.3 PvP: disconnect grace, opponent avatar, rematch, invite cancellation */
+.pvp-abandon-overlay{display:flex;align-items:center;justify-content:center;margin:10px 0 0}
+.pvp-abandon-overlay.hidden{display:none!important}
+.pvp-abandon-inner{
+  display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;width:min(620px,100%);
+  padding:12px 16px;border:1px solid rgba(233,199,111,.30);border-radius:16px;
+  background:rgba(5,24,17,.90);box-shadow:0 12px 30px rgba(0,0,0,.25)
+}
+.pvp-abandon-inner strong{font-size:.82rem}
+.pvp-abandon-countdown{
+  min-width:58px;height:58px;border-radius:16px;display:grid;place-items:center;
+  background:rgba(233,199,111,.11);border:1px solid rgba(233,199,111,.25);
+  color:var(--accent);font-size:1.45rem;font-weight:950;line-height:1
+}
+.pvp-abandon-countdown small{font-size:.62rem;color:var(--muted)}
+.pvp-friend-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.rematch-invite-item{border-color:rgba(233,199,111,.36)}
+@media(max-width:700px){
+  .pvp-abandon-inner{grid-template-columns:1fr auto;gap:10px;padding:10px 12px}
+  .pvp-friend-actions{justify-content:flex-start}
+}

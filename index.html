@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#071b13">
   <meta name="description" content="Tabinet — joc de cărți românesc, direct în browser.">
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/icon.svg?v=076-friends4" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=079-friend-profile-modal">
+  <link rel="icon" href="./icons/icon.svg?v=083-pvp-features" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=083-pvp-features">
   <title>Tabinet • v0.7.6</title>
 <script>
   (function () {
-    const RESET_KEY = 'tabinet-pages-reset-076-friends4';
+    const RESET_KEY = 'tabinet-pages-reset-083-pvp-features';
     if (!('serviceWorker' in navigator) || !('caches' in window)) return;
     if (localStorage.getItem(RESET_KEY) === '1') return;
     localStorage.setItem(RESET_KEY, '1');
@@ -98,6 +98,7 @@
       </div>
 
       <aside id="pvpInviteNotification" class="pvp-invite-notification hidden" aria-live="assertive"></aside>
+      <aside id="pvpRematchNotification" class="pvp-invite-notification hidden" aria-live="assertive"></aside>
 
       <footer class="menu-footer">
         <span>Browser-first • PWA</span>
@@ -274,11 +275,18 @@
           <div class="player-chip player-chip-bot">
             <span class="score-value" id="opponentScore">0</span>
             <div><strong id="opponentChipName">Bot</strong><small id="botMeta">Ușor</small></div>
-            <div class="avatar bot-avatar">BOT</div>
+            <div class="avatar bot-avatar" id="opponentAvatar">BOT</div>
           </div>
         </div>
 
         <div class="turn-banner" id="turnBanner">Este rândul tău</div>
+        <div id="pvpAbandonOverlay" class="pvp-abandon-overlay hidden" aria-live="assertive">
+          <div class="pvp-abandon-inner">
+            <span class="pvp-invite-kicker">PVP</span>
+            <strong id="pvpAbandonCopy">Așteaptă-l pe celălalt jucător…</strong>
+            <div class="pvp-abandon-countdown"><span id="pvpAbandonCountdown">10</span><small>s</small></div>
+          </div>
+        </div>
 
         <div class="table-zone" id="tableZone">
           <div class="table-zone-top">
@@ -631,7 +639,7 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="./rules.js?v=082-pvp" defer></script>
-  <script src="./app.js?v=082-pvp" defer></script>
+  <script src="./rules.js?v=083-pvp-features" defer></script>
+  <script src="./app.js?v=083-pvp-features" defer></script>
 </body>
 </html>

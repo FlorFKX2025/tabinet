@@ -426,6 +426,7 @@ function serializePvpState() {
 
 function applyPvpMatchState(match) {
   if (!match?.state) return false;
+  const wasRemoteApply = state.pvpMatchVersion > 0 && Number(match.version || 0) > Number(state.pvpMatchVersion || 0);
   const payload=match.state;
   const ownerIsMe=String(payload.owner_player_id||'').toUpperCase()===String(profile.id||'').toUpperCase();
   state.deck=pvpClone(payload.deck||[]);
@@ -448,7 +449,12 @@ function applyPvpMatchState(match) {
   state.turn=turnId===String(profile.id||'').toUpperCase()?'player':'opponent';
   if(match.status!=='active') state.turn='done';
   ['captureDialog','tableauDialog','stackDialog'].forEach(id=>{if($(id)?.open)$(id).close();});
-  renderGame(); return true;
+  renderGame();
+  if (wasRemoteApply) {
+    const zone=$('tableZone');
+    if (zone) { zone.classList.remove('pvp-remote-update'); void zone.offsetWidth; zone.classList.add('pvp-remote-update'); window.setTimeout(()=>zone.classList.remove('pvp-remote-update'),520); }
+  }
+  return true;
 }
 
 async function fetchPvpMatch(matchId){
@@ -532,6 +538,8 @@ function renderPvpInviteNotification(requests){
 function pvpOutgoingSet(){return new Set((window.__tabinetPvpDashboard?.outgoing_invites||[]).map(item=>String(item.player_id||'').toUpperCase()));}
 function renderPvpFriends(){
   const list=$('pvpFriendsList');if(!list)return;const friends=Array.isArray(window.__tabinetFriends)?window.__tabinetFriends:[],outgoing=pvpOutgoingSet();list.innerHTML='';
+  if($('pvpFriendsCount')) $('pvpFriendsCount').textContent=String(friends.length);
+  if($('pvpFriendsOnlineCount')) $('pvpFriendsOnlineCount').textContent=String(friends.filter(friend=>friend.online).length);
   if(!friends.length){list.innerHTML='<div class="friends-empty">'+escapeHtml(t('pvpNoFriends'))+'</div>';return;}
   friends.forEach(friend=>{
     const key=String(friend.player_id||'').toUpperCase(),pending=outgoing.has(key),row=document.createElement('article');row.className='pvp-friend-row';
@@ -560,7 +568,7 @@ async function refreshPvpDashboard(){
     }
   }catch{}
 }
-function startPvpPolling(){if(pvpDashboardTimer)clearInterval(pvpDashboardTimer);void refreshPvpDashboard();pvpDashboardTimer=setInterval(()=>{if(document.visibilityState==='visible')void refreshPvpDashboard();},1800);}
+function startPvpPolling(){if(pvpDashboardTimer)clearInterval(pvpDashboardTimer);void refreshPvpDashboard();pvpDashboardTimer=setInterval(()=>{if(document.visibilityState==='visible')void refreshPvpDashboard();},850);}
 function openPvpMode(){renderPvpFriends();showScreen('pvpModeScreen');}
 function openPvpFriends(){renderPvpFriends();showScreen('pvpFriendsScreen');void refreshFriendsData();}
 async function sendPvpInvite(playerId){

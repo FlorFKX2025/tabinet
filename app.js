@@ -53,6 +53,8 @@ const state = {
   pvpAbandonBy: null,
   pvpLeavingMatchId: null,
   pvpRematchPending: false,
+  replayFrames: [],
+  replayLastVersion: 0,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -450,6 +452,9 @@ function applyPvpMatchState(match) {
   state.pendingPlay=null; state.pendingCaptureGroups=[]; state.pendingSelection=[]; state.pendingStackCard=null; state.pendingPlaySourceRect=null;
   state.pendingTableauCards=[]; state.waitingForTableau=false; state.dealing=false; state.animating=false;
   state.pvpMatchVersion=Number(match.version||0);
+  const remoteEvent=Array.isArray(payload.matchEvents)?payload.matchEvents[payload.matchEvents.length-1]:null;
+  if(!Array.isArray(state.replayFrames)||!state.replayFrames.length||wasRemoteApply)captureReplayFrame(remoteEvent?.actor||'system',remoteEvent?.text||payload.message||'',remoteEvent?.kind||(wasRemoteApply?'move':'start'),state.pvpMatchVersion);
+  state.replayLastVersion=state.pvpMatchVersion;
   state.pvpAbandonExpiresAt=match.status==='abandon_pending' ? (match.abandon_expires_at || null) : null;
   state.pvpAbandonBy=match.status==='abandon_pending' ? (match.abandoned_by || null) : null;
   const turnId=String(match.turn_player_id||'').toUpperCase();
@@ -501,6 +506,7 @@ function recordPvpBattleResult(abandoned=false,winnerId=null){
     id:Date.now(),timestamp:Date.now(),mode:'player',difficulty:null,playerScore:Number(state.score||0),botScore:Number(state.opponentScore||0),
     opponentName:pvpOpponentName(),result,winner:result==='draw'?'draw':winner===profile.id?'player':'opponent',abandoned:Boolean(abandoned),
     events:Array.isArray(state.matchEvents)?state.matchEvents.slice(-80):[],
+    replayFrames:Array.isArray(state.replayFrames)?pvpClone(state.replayFrames).slice(-72):[], replayReady:Array.isArray(state.replayFrames)&&state.replayFrames.length>1,
     date:new Date().toLocaleDateString(settings.language==='en'?'en-GB':'ro-RO',{day:'2-digit',month:'2-digit'})
   },...battleHistory].slice(0,8);
   saveBattleHistory(); state.pvpTerminalHandled=true; renderBattleLog(); renderHistoryEntries(); renderProfile();
@@ -531,7 +537,9 @@ async function enterPvpMatch(matchId){
   clearPausedMatch();pvpActionBusy=true;
   try{
     const match=await fetchPvpMatch(matchId);if(!match)return;
+    const enteringNewPvpMatch=String(state.pvpMatchId||'')!==String(match.id||'');
     state.selectedMode='pvp';state.pvpMatchId=match.id;state.pvpMatchVersion=Number(match.version||0);
+    if(enteringNewPvpMatch){state.replayFrames=[];state.replayLastVersion=0;}
     state.pvpOpponent=match.opponent||null;state.pvpTerminalHandled=false;state.pvpLeavingMatchId=null;state.pvpRematchPending=false;
     $('gameOverDialog')?.close();
     if(match.status==='abandoned'||match.status==='completed'){await showPvpTerminal(match);return;}
@@ -751,6 +759,21 @@ function startFriendsRealtime(){
   }catch{}
 }
 
+
+const trainingLessons=[
+ {titleKey:'training1Title',copyKey:'training1Copy',promptKey:'training1Prompt',hintKey:'training1Hint',explainKey:'training1Explain',visual:'<div class="training-board-cards"><span class="training-card">3♣</span><span class="training-plus">+</span><span class="training-card">4♦</span><span class="training-arrow">→</span><span class="training-card accent">7♥</span></div>',choices:['7♥','8♣','6♦'],correct:0},
+ {titleKey:'training2Title',copyKey:'training2Copy',promptKey:'training2Prompt',hintKey:'training2Hint',explainKey:'training2Explain',visual:'<div class="training-board-cards"><span class="training-card accent">A♥</span><span class="training-equals">=</span><span class="training-dual">1 / 11</span></div>',choices:['Doar 1','Doar 11','1 sau 11','12'],correct:2},
+ {titleKey:'training3Title',copyKey:'training3Copy',promptKey:'training3Prompt',hintKey:'training3Hint',explainKey:'training3Explain',visual:'<div class="training-board-cards"><span class="training-stack-mini"><span>7♣</span><span>7♦</span></span><span class="training-arrow">→</span><span class="training-dual">?</span></div>',choices:['7','14','A'],correct:0},
+ {titleKey:'training4Title',copyKey:'training4Copy',promptKey:'training4Prompt',hintKey:'training4Hint',explainKey:'training4Explain',visual:'<div class="training-board-cards"><span class="training-card">9♣</span><span class="training-card accent">2♣</span><span class="training-card red">A♥</span></div>',choices:['9♣','2♣','A♥'],correct:1},
+ {titleKey:'training5Title',copyKey:'training5Copy',promptKey:'training5Prompt',hintKey:'training5Hint',explainKey:'training5Explain',visual:'<div class="training-board-cards"><span class="training-card">9♣</span><span class="training-card accent">A♥</span><span class="training-card">10♦</span></div>',choices:['9♣','A♥','10♦'],correct:0},
+ {titleKey:'training6Title',copyKey:'training6Copy',promptKey:'training6Prompt',hintKey:'training6Hint',explainKey:'training6Explain',visual:'<div class="training-board-cards"><span class="training-card">A♥</span><span class="training-card">9♣</span><span class="training-card">K♦</span><span class="training-arrow">→</span><span class="training-dual">Ultima captură</span></div>',choices:['Rămân pe masă','Le ia ultimul jucător care a făcut captură','Se împart din nou'],correct:1}
+];
+const trainingState={lesson:0,score:0,answered:false};
+function renderTraining(){const l=trainingLessons[trainingState.lesson],n=trainingState.lesson,total=trainingLessons.length;$('trainingProgressText').textContent=t('trainingProgress').replace('{n}',n+1).replace('{total}',total);$('trainingScore').textContent=t('trainingScore').replace('{score}',trainingState.score).replace('{total}',total);$('trainingProgressFill').style.width=(n/Math.max(1,total-1)*100)+'%';$('trainingTitle').textContent=t(l.titleKey);$('trainingCopy').textContent=t(l.copyKey);$('trainingPrompt').textContent=t(l.promptKey);$('trainingBoard').innerHTML=l.visual;$('trainingHint').textContent='';$('trainingFeedback').className='training-feedback';$('trainingFeedback').textContent='';$('trainingHintBtn').textContent=t('trainingHintBtn');const c=$('trainingChoices');c.innerHTML='';l.choices.forEach((label,i)=>{const b=document.createElement('button');b.type='button';b.className='training-choice';b.textContent=label;b.addEventListener('click',()=>answerTraining(i));c.appendChild(b);});$('trainingPrevBtn').disabled=n===0;$('trainingNextBtn').disabled=true;$('trainingPrevBtn').textContent=t('trainingPrev');$('trainingNextBtn').textContent=n===total-1?t('trainingFinish'):t('trainingNext');trainingState.answered=false;}
+function answerTraining(index){if(trainingState.answered)return;const l=trainingLessons[trainingState.lesson],correct=index===l.correct;trainingState.answered=true;if(correct)trainingState.score++;document.querySelectorAll('.training-choice').forEach((b,i)=>{b.disabled=true;if(i===l.correct)b.classList.add('correct');if(i===index&&!correct)b.classList.add('wrong');});$('trainingFeedback').className='training-feedback '+(correct?'success':'error');$('trainingFeedback').textContent=t(correct?'trainingCorrect':'trainingWrong')+' '+t(l.explainKey);$('trainingNextBtn').disabled=false;$('trainingScore').textContent=t('trainingScore').replace('{score}',trainingState.score).replace('{total}',trainingLessons.length);}
+function showTrainingHint(){$('trainingHint').textContent=t(trainingLessons[trainingState.lesson].hintKey);}
+function openTraining(){const d=$('trainingDialog');if(!d)return;trainingState.lesson=0;trainingState.score=0;renderTraining();d.showModal();}
+function closeTraining(){if($('trainingDialog')?.open)$('trainingDialog').close();forceModalCleanup();}
 let settings = loadSettings();
 let battleHistory = loadBattleHistory();
 let profile = loadProfile();
@@ -1313,6 +1336,14 @@ const I18N = {
     friendsKicker:'PRIETENI', friendsTitle:'Prieteni', friendsCopy:'Conectează-te cu jucători, vezi cine este online și gestionează cererile.', friendsRequestsTitle:'Cereri primite', friendsListTitle:'Lista mea', friendsSummaryCountLabel:'Prieteni', friendsRequestsCountLabel:'Cereri', friendsOnlineLabel:'online', friendAdd:'Adaugă', friendOnline:'Online', friendOffline:'Offline', friendLastSeenNow:'acum', friendLastSeenMinutes:'acum {n} min', friendLastSeenHours:'acum {n} h', friendLastSeenDays:'acum {n} zile', friendNotificationKicker:'CERERE DE PRIETENIE', friendNotificationCopy:'vrea să fie prietenul tău.', friendViewProfile:'Vezi profilul', friendAccepted:'Prieteni', friendIncoming:'Cerere primită', friendDelete:'Șterge', friendDeleteTitle:'Ștergi prietenul?', friendDeleteCopy:'Ești sigur că vrei să îl ștergi pe', friendDeleteConfirm:'Da, șterge', friendDeleteCancel:'Nu, păstrează', friendProfileTitle:'Profilul prietenului', friendNoRequests:'Nu ai cereri de prietenie.', friendNoFriends:'Nu ai încă prieteni adăugați.', friendAccept:'Acceptă', friendReject:'Refuză', friendSearchKicker:'ADĂUGĂ PRIETEN', friendSearchTitle:'Caută după ID', friendSearchCopy:'Introdu ID-ul exact al jucătorului pe care vrei să-l adaugi.', friendEnterId:'Introdu un ID.', friendSearching:'Se caută…', friendNotFound:'Nu am găsit niciun jucător cu acest ID.', friendRequestSent:'Cererea a fost trimisă.', friendSent:'Trimisă', friendThisIsYou:'Ești tu', friendProfileKicker:'PRIETEN', friendProfileCopy:'Profilul online al prietenului.', friendProfileStatsTitle:'Statistici', friendProfileStatsCopy:'Rezumatul meciurilor cu botul.', friendProfileRecentTitle:'Ultimele 3 meciuri', friendProfileRecentCopy:'Momentan sunt afișate doar meciurile cu botul.', friendProfileNameLabel:'Nume', friendProfileIdLabel:'ID jucător', friendProfileNoMatches:'Nu există meciuri cu botul încă.', friendProfileLoading:'Se încarcă profilul…', friendProfileError:'Profilul nu a putut fi încărcat.', friendThisIsYou:'Ești tu', friendBackendError:'Serviciul online nu este disponibil momentan.', friendErr_already_friends:'Sunteți deja prieteni.', friendErr_request_pending:'Cererea este deja trimisă.', friendErr_incoming_pending:'Acest jucător ți-a trimis deja o cerere.', friendErr_cannot_add_self:'Nu te poți adăuga pe tine.', friendErr_sender_not_found:'Profilul tău online nu este sincronizat.', friendErr_generic:'Nu s-a putut trimite cererea.', search:'Caută', friendsClose:'Închide', friendsCloseSearch:'Închide', deleteAccountKicker:'CONT', deleteAccountTitle:'Șterge contul', deleteAccountCopy:'Ștergerea este definitivă: vei pierde ID-ul, numele, progresul, istoricul local și toate datele de prieteni.', deleteAccountBtn:'Șterge definitiv contul', deleteAccountCancel:'Nu, păstrează contul', deleteAccountDeleting:'Se șterg datele…', deleteAccountError:'Contul nu a putut fi șters. Nu s-a pierdut nimic local.', deleteAccountBackendError:'Serviciul online nu este disponibil momentan.', deleteAccountConfirmTitle:'Ești sigur că vrei să continui?', deleteAccountConfirmCopy:'Această acțiune nu poate fi anulată. După ștergere vei primi automat un ID nou.', deleteAccountCopyPreview:'ID-ul, numele, progresul, istoricul local și prietenii vor fi șterse.', settingsKicker:'SETĂRI', settingsTitle:'Preferințe', soundLabel:'Sunete', soundCopy:'Feedback audio pentru acțiuni.', volumeLabel:'Volum', animationsLabel:'Animații', animationsCopy:'Animații complete; OFF păstrează doar tranziții discrete.', languageLabel:'Limbă', languageCopy:'Alege limba interfeței.', done:'Gata',
     profileKicker:'PROFIL', profileTitle:'Profilul meu', profileCopy:'Numele și ID-ul tău sunt salvate local pe acest dispozitiv.', profileNameLabel:'Nume', profileIdLabel:'ID jucător', copyId:'Copiază', copiedId:'Copiat', avatarSectionTitle:'Imagine de profil', avatarSectionCopy:'Alege un avatar.', avatarUploadTitle:'Imagine proprie', avatarUploadCopy:'Alege o imagine de pe dispozitiv.', profileStatsTitle:'Statistici', profileStatsCopy:'Rezumatul meciurilor disponibile.', profileWinRateLabel:'Win rate', profile12hLabel:'Meciuri în ultimele 12h', profileTotalLabel:'Meciuri înregistrate', profileRecentTitle:'Ultimele 3 meciuri', profileRecentCopy:'Momentan sunt afișate meciurile cu botul.', profileNoMatches:'Nu există meciuri disponibile încă.', profileWin:'Victorie', profileLoss:'Înfrângere', avatarTemplate:'Avatar', saveProfile:'Salvează', closeProfile:'Închide', profileMenu:'Profil',
     historyKicker:'ISTORIC MECIURI', historyTitleFull:'Log-uri de meciuri', historyCopy:'Vezi rezultatele și rezumatul fiecărei partide.', close:'Închide', emptyHistory:'Niciun meci terminat încă.', botMode:'BOT', playerMode:'PLAYER', watch:'Watch', soon:'În curând', opponentBot:'Bot', resultYou:'Tu', resultBot:'Botul', draw:'Egalitate', dateNow:'acum', details:'Vezi desfășurarea',
+    watchDisabled:'Watch este disponibil doar pentru meciurile noi înregistrate după această actualizare.', replayTitle:'Vizualizare partidă', replayCopy:'Urmărește fiecare mutare, exact cum a fost înregistrată.', replayPlay:'Redă', replayPause:'Pauză', replayRestart:'Reia de la început', replayClose:'Închide', replaySpeed:'Viteză', replayRemaining:'Rămas:', replayStart:'Partida începe.', replayTable:'MASĂ', replayDeck:'în pachet',
+    trainingLaunch:'Loc de antrenament', trainingKicker:'ANTRENAMENT', trainingTitle:'Învață să joci Tabinet', trainingCopy:'Parcurge regulile pas cu pas și rezolvă mici situații de joc ca să înveți prin practică.', trainingProgress:'Regula {n} din {total}', trainingScore:'Scor: {score}/{total}', trainingPrev:'Înapoi', trainingNext:'Următoarea', trainingFinish:'Gata', trainingHintBtn:'Indiciu', trainingCorrect:'Corect!', trainingWrong:'Nu chiar.',
+    training1Title:'Captura', training1Copy:'O carte poate captura cărți de pe masă dacă valoarea lor totală se potrivește cu valoarea cărții jucate.', training1Prompt:'Pe masă sunt 3♣ și 4♦. Ce carte le poate captura împreună?', training1Hint:'Caută suma 3 + 4.', training1Explain:'3 + 4 = 7, deci 7 poate captura ambele cărți.',
+    training2Title:'Asul', training2Copy:'Asul este flexibil și poate fi folosit ca 1 sau 11, în funcție de combinația care se potrivește.', training2Prompt:'Cum poate conta Asul când încerci o captură?', training2Hint:'Asul are două valori posibile.', training2Explain:'Asul poate conta fie ca 1, fie ca 11.',
+    training3Title:'Stiva', training3Copy:'O stivă de 2 sau mai multe cărți devine blocată: poate fi capturată doar cu aceeași valoare/rang.', training3Prompt:'Ai o stivă 7♣ + 7♦. Cu ce o poți captura?', training3Hint:'Stiva nu se desface într-o sumă.', training3Explain:'O stivă de 7 poate fi capturată doar de un 7.',
+    training4Title:'Punctul special', training4Copy:'A, 10, J, Q, K și 2♣ au punct special la captură; 2♣ are și bonus de tablă.', training4Prompt:'Care dintre cărțile de mai jos are punct special la captură chiar dacă nu este figură?', training4Hint:'Este cartea cu un simbol aparte în regulile jocului.', training4Explain:'2♣ valorează 1 punct special la captură.',
+    training5Title:'Marcajul de tablă', training5Copy:'Când golești masa, alegi o carte capturată ca marcaj. Cărțile 2–9 pot aduce bonus de tablă; A/10/J/Q/K nu adaugă bonus.', training5Prompt:'Care oferă bonus de tablă dintre aceste trei?', training5Hint:'Numerele 2–9 pot primi bonus.', training5Explain:'9♣ oferă +1 bonus de tablă. Asul și 10 nu primesc bonus suplimentar de marcaj.',
+    training6Title:'Ultima mână', training6Copy:'Când pachetul s-a terminat, ultimul jucător care a făcut o captură primește și cărțile rămase pe masă.', training6Prompt:'Ce se întâmplă cu cărțile rămase pe masă la final?', training6Hint:'Ultima captură are un avantaj important.', training6Explain:'Ultimul jucător care a făcut o captură ia automat toate cărțile rămase pe masă.',
     gameOverKicker:'PARTIDĂ TERMINATĂ', gameOverDraw:'Egalitate', gameOverWin:'Ai câștigat partida', gameOverLoss:'Botul a câștigat partida', gameOverCopy:'Punctajul final include cărțile capturate și tablele active.', menu:'Meniu', rematch:'Mai joci o dată', you:'Tu', abandoned:'Abandonat', pauseKicker:'PARTIDĂ PUSĂ PE PAUZĂ', pauseTitle:'Poți reveni în această partidă.', pauseCopy:'Botul așteaptă. Dacă nu revii la timp, partida va fi declarată pierdută.', rejoin:'Reintră în meci', abandon:'Abandonează', seconds:'sec', pauseExpired:'Timpul a expirat. Partida a fost declarată pierdută.', pauseAbandoned:'Ai abandonat partida. Victoria a fost acordată adversarului.', pauseSaved:'Partida a fost pusă pe pauză.', leaveMatch:'Ieși din meci',
     loading1:'Se pregătește masa…', loading2:'Se încarcă pachetul…', loading3:'Gata de joc.', shuffleKicker:'PREGĂTEȘTE-TE', shuffleTitle:'Se amestecă pachetul', shuffleCopy:'Se distribuie cărțile și începe partida.',
     noMatchRank:'{card} nu are aceeași valoare ca nicio carte de pe masă.', placedStack:'Ai pus {card} peste {rank}. Acum stiva are {count} cărți.', placedTable:'Ai pus {card} pe masă. Ține apăsat pe o carte pentru a o pune peste aceeași valoare.', forcedPlace:'Ai pus {card} direct pe masă, fără captură.', captureMessage:'Ai jucat {played} și ai luat {count} {word} · +{gain} {points}.', captureBotMessage:'Botul a jucat {played} și a capturat {count} {word} · +{gain} {points}.', tableauPrompt:'Ai golit masa — alege cartea care marchează tabla.', tableExclamation:'Tablă!', tableauChosen:'Ai ales {card} ca marcaj pentru tablă.', botTableau:' Tablă! Marcaj: {card}.', lastDealMessage:'Ultima mână a fost împărțită. Cine face ultima captură ia și toate cărțile rămase pe masă.', dealMessage:'Mâna {round} a fost împărțită.', botPlaced:'Botul a pus {card} pe masă.', lastCapture:' Ultima captură: {who} a luat automat toate cele {count} cărți rămase · +{gain} {points}.', lastCaptureNoPoints:' Ultima captură: {who} a luat automat toate cele {count} cărți rămase.'
@@ -1331,6 +1362,14 @@ const I18N = {
     friendsKicker:'FRIENDS', friendsTitle:'Friends', friendsCopy:'Connect with players, see who is online and manage requests.', friendsRequestsTitle:'Incoming requests', friendsListTitle:'My list', friendsSummaryCountLabel:'Friends', friendsRequestsCountLabel:'Requests', friendsOnlineLabel:'online', friendAdd:'Add', friendOnline:'Online', friendOffline:'Offline', friendLastSeenNow:'now', friendLastSeenMinutes:'{n} min ago', friendLastSeenHours:'{n} h ago', friendLastSeenDays:'{n} days ago', friendNotificationKicker:'FRIEND REQUEST', friendNotificationCopy:'wants to be your friend.', friendViewProfile:'View profile', friendAccepted:'Friends', friendIncoming:'Incoming request', friendDelete:'Remove', friendDeleteTitle:'Remove friend?', friendDeleteCopy:'Are you sure you want to remove', friendDeleteConfirm:'Yes, remove', friendDeleteCancel:'Keep friend', friendProfileTitle:'Friend profile', friendNoRequests:'You have no friend requests.', friendNoFriends:'You have no friends yet.', friendAccept:'Accept', friendReject:'Decline', friendSearchKicker:'ADD FRIEND', friendSearchTitle:'Find by ID', friendSearchCopy:'Enter the exact player ID you want to add.', friendEnterId:'Enter an ID.', friendSearching:'Searching…', friendNotFound:'No player was found with this ID.', friendRequestSent:'Friend request sent.', friendSent:'Sent', friendThisIsYou:'It’s you', friendProfileKicker:'FRIEND', friendProfileCopy:'Online profile of this friend.', friendProfileStatsTitle:'Statistics', friendProfileStatsCopy:'Summary of bot matches.', friendProfileRecentTitle:'Last 3 matches', friendProfileRecentCopy:'Only bot matches are shown for now.', friendProfileNameLabel:'Name', friendProfileIdLabel:'Player ID', friendProfileNoMatches:'No bot matches yet.', friendProfileLoading:'Loading profile…', friendProfileError:'The profile could not be loaded.', friendThisIsYou:'It’s you', friendBackendError:'The online service is unavailable right now.', friendErr_already_friends:'You are already friends.', friendErr_request_pending:'That request was already sent.', friendErr_incoming_pending:'That player already sent you a request.', friendErr_cannot_add_self:'You cannot add yourself.', friendErr_sender_not_found:'Your online profile is not synchronized.', friendErr_generic:'The request could not be sent.', search:'Search', friendsClose:'Close', friendsCloseSearch:'Close', deleteAccountKicker:'ACCOUNT', deleteAccountTitle:'Delete account', deleteAccountCopy:'This is permanent: you will lose your ID, name, progress, local history and all friend data.', deleteAccountBtn:'Delete account permanently', deleteAccountCancel:'Keep my account', deleteAccountDeleting:'Deleting your data…', deleteAccountError:'The account could not be deleted. Nothing local was lost.', deleteAccountBackendError:'The online service is unavailable right now.', deleteAccountConfirmTitle:'Are you sure you want to continue?', deleteAccountConfirmCopy:'This cannot be undone. After deletion, a new player ID will be generated automatically.', deleteAccountCopyPreview:'Your ID, name, progress, local history and friends will be deleted.', settingsKicker:'SETTINGS', settingsTitle:'Preferences', soundLabel:'Sounds', soundCopy:'Audio feedback for actions.', volumeLabel:'Volume', animationsLabel:'Animations', animationsCopy:'Full animations; OFF keeps only subtle transitions.', languageLabel:'Language', languageCopy:'Choose interface language.', done:'Done',
     profileKicker:'PROFILE', profileTitle:'My profile', profileCopy:'Your name and ID are stored locally on this device.', profileNameLabel:'Name', profileIdLabel:'Player ID', copyId:'Copy', copiedId:'Copied', avatarSectionTitle:'Profile picture', avatarSectionCopy:'Choose an avatar.', avatarUploadTitle:'Custom image', avatarUploadCopy:'Choose an image from your device.', profileStatsTitle:'Statistics', profileStatsCopy:'Summary of available matches.', profileWinRateLabel:'Win rate', profile12hLabel:'Matches in the last 12h', profileTotalLabel:'Recorded matches', profileRecentTitle:'Last 3 matches', profileRecentCopy:'For now, bot matches are shown here.', profileNoMatches:'No matches available yet.', profileWin:'Win', profileLoss:'Loss', avatarTemplate:'Avatar', saveProfile:'Save', closeProfile:'Close', profileMenu:'Profile',
     historyKicker:'MATCH HISTORY', historyTitleFull:'Match logs', historyCopy:'See results and a summary of each match.', close:'Close', emptyHistory:'No finished matches yet.', botMode:'BOT', playerMode:'PLAYER', watch:'Watch', soon:'Coming soon', opponentBot:'Bot', resultYou:'You', resultBot:'Bot', draw:'Draw', dateNow:'now', details:'View match flow',
+    watchDisabled:'Watch is available only for matches recorded after this update.', replayTitle:'Match replay', replayCopy:'Watch every move exactly as it was recorded.', replayPlay:'Play', replayPause:'Pause', replayRestart:'Restart', replayClose:'Close', replaySpeed:'Speed', replayRemaining:'Remaining:', replayStart:'The match begins.', replayTable:'TABLE', replayDeck:'in deck',
+    trainingLaunch:'Training ground', trainingKicker:'TRAINING', trainingTitle:'Learn to play Tabinet', trainingCopy:'Go through the rules step by step and solve small game situations to learn by doing.', trainingProgress:'Rule {n} of {total}', trainingScore:'Score: {score}/{total}', trainingPrev:'Back', trainingNext:'Next', trainingFinish:'Finish', trainingHintBtn:'Hint', trainingCorrect:'Correct!', trainingWrong:'Not quite.',
+    training1Title:'Capturing', training1Copy:'A card can capture table cards when their total value matches the played card.', training1Prompt:'The table has 3♣ and 4♦. Which card can capture both?', training1Hint:'Look for the sum 3 + 4.', training1Explain:'3 + 4 = 7, so a 7 captures both cards.',
+    training2Title:'The Ace', training2Copy:'The Ace is flexible and can count as 1 or 11, depending on the capture.', training2Prompt:'How can an Ace count during a capture?', training2Hint:'The Ace has two possible values.', training2Explain:'An Ace can count as either 1 or 11.',
+    training3Title:'The stack', training3Copy:'A stack of 2 or more cards becomes locked: it can only be captured by the same value/rank.', training3Prompt:'You have a 7♣ + 7♦ stack. What can capture it?', training3Hint:'A stack cannot be split into a sum.', training3Explain:'A 7 stack can only be captured by a 7.',
+    training4Title:'Special point', training4Copy:'A, 10, J, Q, K and 2♣ carry a special capture point; 2♣ also gets a table bonus.', training4Prompt:'Which card below has a special capture point even though it is not a face card?', training4Hint:'Look for the special club card.', training4Explain:'2♣ is worth 1 special capture point.',
+    training5Title:'Table marker', training5Copy:'When you clear the table, you choose one captured card as the marker. Cards 2–9 can add a table bonus; A/10/J/Q/K do not.', training5Prompt:'Which of these gives a table bonus?', training5Hint:'Numbers 2–9 can receive the bonus.', training5Explain:'9♣ gives a +1 table bonus. Ace and 10 do not add an extra marker bonus.',
+    training6Title:'Last hand', training6Copy:'When the deck is exhausted, the last player who made a capture also takes the cards left on the table.', training6Prompt:'What happens to the cards left on the table at the end?', training6Hint:'The final capture has an important advantage.', training6Explain:'The last player who made a capture automatically takes all cards left on the table.',
     gameOverKicker:'MATCH OVER', gameOverDraw:'Draw', gameOverWin:'You won the match', gameOverLoss:'The bot won the match', gameOverCopy:'Final score includes captured cards and active tables.', menu:'Menu', rematch:'Play again', you:'You', abandoned:'Abandoned', pauseKicker:'MATCH PAUSED', pauseTitle:'You can rejoin this match.', pauseCopy:'The bot is waiting. If you do not return in time, the match is declared a loss.', rejoin:'Rejoin match', abandon:'Abandon', seconds:'sec', pauseExpired:'Time expired. The match was declared a loss.', pauseAbandoned:'You abandoned the match. The win was awarded to the opponent.', pauseSaved:'The match has been paused.', leaveMatch:'Leave match',
     loading1:'Setting up the table…', loading2:'Loading the deck…', loading3:'Ready to play.', shuffleKicker:'GET READY', shuffleTitle:'Shuffling the deck', shuffleCopy:'Dealing cards and starting the match.',
     noMatchRank:'{card} has no same-value card on the table.', placedStack:'You placed {card} over {rank}. The stack now has {count} cards.', placedTable:'You placed {card} on the table. Hold a card to stack it over the same value.', forcedPlace:'You placed {card} directly on the table without capturing.', captureMessage:'You played {played} and took {count} {word} · +{gain} {points}.', captureBotMessage:'The bot played {played} and captured {count} {word} · +{gain} {points}.', tableauPrompt:'You cleared the table — choose the card that marks it.', tableExclamation:'Table!', tableauChosen:'You chose {card} as the table marker.', botTableau:' Table! Marker: {card}.', lastDealMessage:'Last hand dealt. Whoever makes the final capture takes all cards left on the table.', dealMessage:'Hand {round} dealt.', botPlaced:'The bot placed {card} on the table.', lastCapture:' Last capture: {who} automatically took all {count} remaining cards · +{gain} {points}.', lastCaptureNoPoints:' Last capture: {who} automatically took all {count} remaining cards.'
@@ -1355,7 +1394,7 @@ function applyLanguage() {
     modeHistoryKicker:'historyKicker', modeHistoryTitle:'historyTitle', modeHistoryCopy:'historyCopyMode', openHistoryBtn:'viewLogs',
     playerRailLabel:'you', opponentRailLabel:'opponentBot', scorePileCaption:'pile', tableLabel:'table', opponentLabel:'opponent', playerHandLabel:'yourHand', restartMatchBtn:'newGame', playerTableauLabel:'playerTableauLabel', opponentTableauLabel:'opponentTableauLabel', playerTableauActive:'playerTableauActive', opponentTableauActive:'opponentTableauActive',
     friendsKicker:'friendsKicker', friendsTitle:'friendsTitle', friendsCopy:'friendsCopy', friendProfileKicker:'friendProfileKicker', friendProfileTitle:'friendProfileTitle', friendProfileCopy:'friendProfileCopy', friendProfileNameLabel:'friendProfileNameLabel', friendProfileIdLabel:'friendProfileIdLabel', friendProfileStatsTitle:'friendProfileStatsTitle', friendProfileStatsCopy:'friendProfileStatsCopy', friendProfileWinRateLabel:'profileWinRateLabel', friendProfile12hLabel:'profile12hLabel', friendProfileTotalLabel:'profileTotalLabel', friendProfileRecentTitle:'friendProfileRecentTitle', friendProfileRecentCopy:'friendProfileRecentCopy', closeFriendProfileBtn:'friendsClose', friendDeleteTitle:'friendDeleteTitle', friendDeleteCopy:'friendDeleteCopy', friendDeleteConfirm:'friendDeleteConfirm', friendDeleteCancel:'friendDeleteCancel', closeDeleteFriendBtn:'friendDeleteCancel', friendsRequestsTitle:'friendsRequestsTitle', friendsListTitle:'friendsListTitle', friendsSummaryCountLabel:'friendsSummaryCountLabel', friendsRequestsCountLabel:'friendsRequestsCountLabel', friendsOnlineLabel:'friendsOnlineLabel', addFriendBtn:'friendAdd', closeFriendsBtn:'friendsClose', friendSearchKicker:'friendSearchKicker', friendSearchTitle:'friendSearchTitle', friendSearchCopy:'friendSearchCopy', friendSearchBtn:'search', closeFriendSearchBtn:'friendsCloseSearch',
-    rulesKicker:'rulesKicker', rulesTitle:'rulesTitle', ruleCaptureTitle:'ruleCaptureTitle', ruleCaptureCopy:'ruleCaptureCopy', ruleAceTitle:'ruleAceTitle', ruleAceCopy:'ruleAceCopy', ruleStackTitle:'ruleStackTitle', ruleStackCopy:'ruleStackCopy', rulePointsTitle:'rulePointsTitle', rulePointsCopy:'rulePointsCopy', ruleTableauTitle:'ruleTableauTitle', ruleTableauCopy:'ruleTableauCopy', ruleLastHandTitle:'ruleLastHandTitle', ruleLastHandCopy:'ruleLastHandCopy', closeRulesBtn:'understood',
+    rulesKicker:'rulesKicker', rulesTitle:'rulesTitle', trainingLaunchBtn:'trainingLaunch', replayTitle:'replayTitle', replayCopy:'replayCopy', replaySpeedLabel:'replaySpeed', replayCloseBtn:'replayClose', ruleCaptureTitle:'ruleCaptureTitle', ruleCaptureCopy:'ruleCaptureCopy', ruleAceTitle:'ruleAceTitle', ruleAceCopy:'ruleAceCopy', ruleStackTitle:'ruleStackTitle', ruleStackCopy:'ruleStackCopy', rulePointsTitle:'rulePointsTitle', rulePointsCopy:'rulePointsCopy', ruleTableauTitle:'ruleTableauTitle', ruleTableauCopy:'ruleTableauCopy', ruleLastHandTitle:'ruleLastHandTitle', ruleLastHandCopy:'ruleLastHandCopy', closeRulesBtn:'understood',
     captureKicker:'captureKicker', captureTitle:'captureTitle', cancelCaptureBtn:'cancel', captureConfirmBtn:'takeCards', tableauKicker:'tableauKicker', tableauTitle:'tableauTitle', stackKicker:'stackKicker', stackTitle:'stackTitle', cancelStackBtn:'stackCancel', settingsKicker:'settingsKicker', settingsTitle:'settingsTitle', settingsLanguageLabel:'languageLabel', settingsLanguageCopy:'languageCopy', settingsAnimationsLabel:'animationsLabel', settingsAnimationsCopy:'animationsCopy', deleteAccountKicker:'deleteAccountKicker', deleteAccountTitle:'deleteAccountTitle', deleteAccountCopy:'deleteAccountCopy', deleteAccountBtn:'deleteAccountBtn', cancelDeleteAccountBtn:'deleteAccountCancel', deleteAccountConfirmTitle:'deleteAccountConfirmTitle', deleteAccountConfirmCopy:'deleteAccountConfirmCopy', deleteAccountCopyPreview:'deleteAccountCopyPreview', confirmDeleteAccountBtn:'deleteAccountBtn', closeSettingsBtn:'done',
     historyKicker:'historyKicker', historyTitle:'historyTitleFull', historyCopy:'historyCopy', closeHistoryBtn:'close', profileKicker:'profileKicker', profileTitle:'profileTitle', profileCopy:'profileCopy', profileNameLabel:'profileNameLabel', profileIdLabel:'profileIdLabel', avatarSectionTitle:'avatarSectionTitle', avatarSectionCopy:'avatarSectionCopy', avatarUploadTitle:'avatarUploadTitle', avatarUploadCopy:'avatarUploadCopy', profileStatsTitle:'profileStatsTitle', profileStatsCopy:'profileStatsCopy', profileWinRateLabel:'profileWinRateLabel', profile12hLabel:'profile12hLabel', profileTotalLabel:'profileTotalLabel', profileRecentTitle:'profileRecentTitle', profileRecentCopy:'profileRecentCopy',
     finalYouLabel:'you', finalBotLabel:'opponentBot', gameOverMenuBtn:'menu', gameOverRematchBtn:'rematch',
@@ -1428,9 +1467,19 @@ function applyLanguage() {
   updateSettingsUI(); renderBattleLog(); renderHistoryEntries(); renderProfile(); renderResumeBar();
 }
 
+function captureReplayFrame(actor='system', text='', kind='state', serverVersion=0) {
+  if (!Array.isArray(state.replayFrames)) state.replayFrames = [];
+  const frame = {version:1,actor:actor||'system',text:String(text||''),kind:kind||'state',time:new Date().toISOString(),round:Number(state.round||1),deckCount:Array.isArray(state.deck)?state.deck.length:0,tableStacks:pvpClone(Array.isArray(state.tableStacks)?state.tableStacks:[]),playerHand:pvpClone(Array.isArray(state.hand)?state.hand:[]),opponentHand:pvpClone(Array.isArray(state.opponentHand)?state.opponentHand:[]),playerScore:Number(state.score||0),opponentScore:Number(state.opponentScore||0),tableauMarkers:pvpClone(state.tableauMarkers||{player:[],opponent:[]}),lastTaker:state.lastTaker||null,turn:state.turn||'menu',serverVersion:Number(serverVersion||0)};
+  const last=state.replayFrames[state.replayFrames.length-1];
+  if(last&&Number(last.serverVersion||0)===Number(frame.serverVersion||0)&&last.kind===frame.kind&&last.text===frame.text&&JSON.stringify(last.tableStacks)===JSON.stringify(frame.tableStacks)&&JSON.stringify(last.playerHand)===JSON.stringify(frame.playerHand)&&JSON.stringify(last.opponentHand)===JSON.stringify(frame.opponentHand)&&last.playerScore===frame.playerScore&&last.opponentScore===frame.opponentScore)return;
+  state.replayFrames.push(frame);
+  if(state.replayFrames.length>72)state.replayFrames.shift();
+}
 function addMatchEvent(actor, text, kind = 'move') {
-  state.matchEvents.push({ actor, text, kind, round: state.round, time: new Date().toLocaleTimeString(settings.language === 'en' ? 'en-GB' : 'ro-RO', { hour:'2-digit', minute:'2-digit' }) });
-  if (state.matchEvents.length > 80) state.matchEvents.shift();
+  const event={actor,text,kind,round:state.round,time:new Date().toLocaleTimeString(settings.language==='en'?'en-GB':'ro-RO',{hour:'2-digit',minute:'2-digit'})};
+  state.matchEvents.push(event);
+  if(state.matchEvents.length>80)state.matchEvents.shift();
+  captureReplayFrame(event.actor,event.text,event.kind,isPvpMode()?state.pvpMatchVersion:0);
 }
 
 function showScreen(id) {
@@ -1678,36 +1727,38 @@ function renderBattleLog() {
   });
 }
 
-function renderHistoryEntries() {
-  const list = $('historyEntries');
-  const total = $('historyTotal');
-  if (!list) return;
-  if (total) total.textContent = battleHistory.length;
-  list.innerHTML = '';
-  if (!battleHistory.length) {
-    list.innerHTML = `<div class="history-empty">${t('emptyHistory')}</div>`;
-    return;
-  }
-  battleHistory.forEach((entry, index) => {
-    const item = document.createElement('article');
-    item.className = 'history-entry';
-    const mode = entry.mode === 'player' ? t('playerMode') : t('botMode');
-    const opponent = entry.opponentName || t('opponentBot');
-    const outcome = entryResult(entry);
-    const result = outcome === 'draw' ? t('draw') : outcome === 'win' ? t('resultYou') : entry.abandoned ? t('abandoned') : t('resultBot');
-    const diff = entry.mode === 'bot' ? difficultyLabel(entry.difficulty) : '';
-    const events = Array.isArray(entry.events) ? entry.events : [];
-    const preview = events.slice(-5).map(ev => `<li><span>${ev.time || ''}</span>${escapeHtml(ev.text)}</li>`).join('');
-    item.innerHTML = `
-      <div class="history-entry-top"><div><span class="battle-mode ${entry.mode === 'player' ? 'player-mode' : 'bot-mode'}">${mode}</span><strong>${escapeHtml(opponent)}</strong></div><span class="battle-date">${escapeHtml(entry.date || '')}</span></div>
-      <div class="history-entry-score"><strong>${entry.playerScore}</strong><span>—</span><strong>${entry.botScore}</strong><em>${escapeHtml(result)}</em></div>
-      <div class="history-entry-meta"><span>${escapeHtml(diff)}</span><span>${events.length} ${settings.language === 'en' ? 'events' : 'acțiuni'}</span></div>
-      <details class="history-details"><summary>${t('details')}</summary><ol>${preview || `<li>${t('emptyHistory')}</li>`}</ol><button class="secondary watch-btn" type="button" disabled>${t('watch')} · ${t('soon')}</button></details>
-    `;
-    item.dataset.index = index;
+function renderHistoryEntries(){
+  const list=$('historyEntries'),total=$('historyTotal');if(!list)return;
+  if(total)total.textContent=battleHistory.length;list.innerHTML='';
+  if(!battleHistory.length){list.innerHTML='<div class="history-empty">'+t('emptyHistory')+'</div>';return;}
+  battleHistory.forEach((entry,index)=>{
+    const item=document.createElement('article');item.className='history-entry';
+    const mode=entry.mode==='player'?t('playerMode'):t('botMode'),opponent=entry.opponentName||t('opponentBot'),outcome=entryResult(entry);
+    const result=outcome==='draw'?t('draw'):outcome==='win'?t('resultYou'):entry.abandoned?t('abandoned'):t('resultBot'),diff=entry.mode==='bot'?difficultyLabel(entry.difficulty):'';
+    const events=Array.isArray(entry.events)?entry.events:[],preview=events.slice(-5).map(ev=>'<li><span>'+escapeHtml(ev.time||'')+'</span>'+escapeHtml(ev.text)+'</li>').join('');
+    const ready=Boolean(entry.replayReady&&Array.isArray(entry.replayFrames)&&entry.replayFrames.length>1);
+    const watch=ready?'<button class="secondary watch-btn history-watch-btn" type="button" data-history-index="'+index+'">▶ '+escapeHtml(t('watch'))+'</button>':'<button class="secondary watch-btn history-watch-btn" type="button" disabled title="'+escapeHtml(t('watchDisabled'))+'">'+escapeHtml(t('watch'))+'</button>';
+    item.innerHTML='<div class="history-entry-top"><div><span class="battle-mode '+(entry.mode==='player'?'player-mode':'bot-mode')+'">'+mode+'</span><strong>'+escapeHtml(opponent)+'</strong></div><span class="battle-date">'+escapeHtml(entry.date||'')+'</span></div>'+
+      '<div class="history-entry-score"><strong>'+entry.playerScore+'</strong><span>—</span><strong>'+entry.botScore+'</strong><em>'+escapeHtml(result)+'</em></div>'+
+      '<div class="history-entry-meta"><span>'+escapeHtml(diff)+'</span><span>'+events.length+' '+(settings.language==='en'?'events':'acțiuni')+'</span></div>'+
+      '<details class="history-details"><summary>'+t('details')+'</summary><ol>'+ (preview||'<li>'+t('emptyHistory')+'</li>') +'</ol>'+watch+'</details>';
     list.appendChild(item);
   });
 }
+let replayState={entry:null,frames:[],durations:[],totalMs:0,elapsedMs:0,frameIndex:0,speed:1,playing:false,raf:null,lastTs:0};
+function replayCardMarkup(card,compact=false){if(!card)return '';return '<span class="replay-card'+(card.red?' red':'')+(compact?' compact':'')+'"><b>'+escapeHtml(card.rank||'')+'</b><i>'+escapeHtml(card.symbol||'')+'</i></span>';}
+function replayStackMarkup(stack){const cards=Array.isArray(stack?.cards)?stack.cards:[];return cards.length?'<div class="replay-stack">'+cards.map(c=>replayCardMarkup(c,true)).join('')+(cards.length>1?'<span class="replay-stack-count">×'+cards.length+'</span>':'')+'</div>':'';}
+function replayDuration(kind){return ({start:1700,deal:1350,place:1000,stack:1050,capture:1350,tableau:1150,end:1700,pause:800,resume:900})[kind]||1050;}
+function formatReplayTime(ms){const sec=Math.max(0,Math.ceil(ms/1000));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');}
+function replayFramesFromEntry(entry){return Array.isArray(entry?.replayFrames)?entry.replayFrames.filter(f=>f&&Array.isArray(f.tableStacks)):[];}
+function renderReplayFrame(frame){const board=$('replayBoard');if(!board||!frame)return;const opponentName=replayState.entry?.opponentName||t('opponentBot'),ph=Array.isArray(frame.playerHand)?frame.playerHand:[],oh=Array.isArray(frame.opponentHand)?frame.opponentHand:[],stacks=Array.isArray(frame.tableStacks)?frame.tableStacks:[];board.innerHTML='<div class="replay-hand replay-hand-top"><div class="replay-player-label"><span>'+escapeHtml(opponentName)+'</span><strong>'+Number(frame.opponentScore||0)+'</strong></div><div class="replay-hand-cards">'+oh.map(c=>replayCardMarkup(c)).join('')+'</div></div><div class="replay-table"><div class="replay-table-head"><span>'+escapeHtml(t('replayTable'))+'</span><small>'+Number(frame.deckCount||0)+' '+escapeHtml(t('replayDeck'))+'</small></div><div class="replay-table-cards">'+(stacks.length?stacks.map(replayStackMarkup).join(''):'<span class="replay-empty-table">·</span>')+'</div></div><div class="replay-hand replay-hand-bottom"><div class="replay-player-label"><span>'+escapeHtml(t('you'))+'</span><strong>'+Number(frame.playerScore||0)+'</strong></div><div class="replay-hand-cards">'+ph.map(c=>replayCardMarkup(c)).join('')+'</div></div>';if($('replayEvent'))$('replayEvent').textContent=frame.text||(frame.kind==='start'?t('replayStart'):'');if($('replayRound'))$('replayRound').textContent=String(frame.round||1);}
+function renderReplayTimeline(){const f=replayState.frames[replayState.frameIndex]||replayState.frames[0];if(!f)return;const before=replayState.durations.slice(0,replayState.frameIndex).reduce((x,y)=>x+y,0),progress=Math.min(replayState.totalMs,before+replayState.elapsedMs),pct=replayState.totalMs?progress/replayState.totalMs*100:0;if($('replayProgressFill'))$('replayProgressFill').style.width=pct+'%';if($('replayRemaining'))$('replayRemaining').textContent=t('replayRemaining')+' '+formatReplayTime(Math.max(0,replayState.totalMs-progress));if($('replayCurrent'))$('replayCurrent').textContent=(replayState.frameIndex+1)+' / '+replayState.frames.length;if($('replayScrub'))$('replayScrub').value=String(Math.round(pct));renderReplayFrame(f);const list=$('replayEventList');if(list)Array.from(list.children).forEach((el,i)=>el.classList.toggle('active',i===replayState.frameIndex));}
+function renderReplayEventList(){const list=$('replayEventList');if(!list)return;list.innerHTML='';replayState.frames.forEach((f,i)=>{const item=document.createElement('button');item.type='button';item.className='replay-event-item';item.innerHTML='<span>'+String(f.round||1)+'</span><div><strong>'+escapeHtml(f.actor==='player'?t('you'):f.actor==='bot'?t('opponentBot'):'TABINET')+'</strong><small>'+escapeHtml(f.text||t('replayStart'))+'</small></div>';item.addEventListener('click',()=>{replayState.frameIndex=i;replayState.elapsedMs=0;setReplayPlaying(false);renderReplayTimeline();});list.appendChild(item);});}
+function updateReplayControls(){if($('replayPlayBtn'))$('replayPlayBtn').textContent=replayState.playing?t('replayPause'):(replayState.frameIndex===replayState.frames.length-1&&replayState.elapsedMs>=replayState.durations[replayState.frameIndex]?t('replayRestart'):t('replayPlay'));document.querySelectorAll('.replay-speed-btn').forEach(b=>b.classList.toggle('active',Number(b.dataset.speed)===replayState.speed));}
+function replayTick(ts){if(!replayState.playing){replayState.raf=null;return;}if(!replayState.lastTs)replayState.lastTs=ts;replayState.elapsedMs+=(ts-replayState.lastTs)*replayState.speed;replayState.lastTs=ts;let d=replayState.durations[replayState.frameIndex]||1000;while(replayState.elapsedMs>=d&&replayState.frameIndex<replayState.frames.length-1){replayState.elapsedMs-=d;replayState.frameIndex++;d=replayState.durations[replayState.frameIndex]||1000;}if(replayState.frameIndex===replayState.frames.length-1&&replayState.elapsedMs>=d){replayState.elapsedMs=d;setReplayPlaying(false);renderReplayTimeline();return;}renderReplayTimeline();replayState.raf=requestAnimationFrame(replayTick);}
+function setReplayPlaying(playing){if(!replayState.frames.length)return;replayState.playing=Boolean(playing);if(replayState.playing){if(replayState.frameIndex===replayState.frames.length-1&&replayState.elapsedMs>=replayState.durations[replayState.frameIndex]){replayState.frameIndex=0;replayState.elapsedMs=0;}replayState.lastTs=0;updateReplayControls();replayState.raf=requestAnimationFrame(replayTick);}else{replayState.lastTs=0;if(replayState.raf){cancelAnimationFrame(replayState.raf);replayState.raf=null;}updateReplayControls();}}
+function openReplayForEntry(entry){const frames=replayFramesFromEntry(entry),dialog=$('replayDialog');if(!dialog||frames.length<2){alert(t('watchDisabled'));return;}replayState={entry,frames,durations:frames.map(f=>replayDuration(f.kind)),totalMs:frames.reduce((x,f)=>x+replayDuration(f.kind),0),elapsedMs:0,frameIndex:0,speed:1,playing:false,raf:null,lastTs:0};$('replayOpponentName').textContent=entry.opponentName||t('opponentBot');renderReplayEventList();renderReplayTimeline();updateReplayControls();dialog.showModal();setReplayPlaying(true);}
+
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[ch]));
@@ -2042,6 +2093,7 @@ function openTableauChooser(cards) {
       state.waitingForTableau = false;
       state.pendingTableauCards = [];
       state.message += ` ${t('tableauChosen',{card:cardLabel(card)})}`;
+      addMatchEvent('player', state.message, 'tableau');
       playTone('success');
       renderGame();
       finishTurnOrDeal();
@@ -2195,6 +2247,7 @@ function recordBattleResult() {
     result: state.score === state.opponentScore ? 'draw' : state.score > state.opponentScore ? 'win' : 'loss',
     opponentName: 'Bot',
     events: state.matchEvents.slice(-80),
+    replayFrames:Array.isArray(state.replayFrames)?pvpClone(state.replayFrames).slice(-72):[], replayReady:Array.isArray(state.replayFrames)&&state.replayFrames.length>1,
     date: new Date().toLocaleDateString(settings.language === 'en' ? 'en-GB' : 'ro-RO', { day: '2-digit', month: '2-digit' }),
   };
   battleHistory = [entry, ...battleHistory].slice(0, 8);
@@ -2276,6 +2329,8 @@ async function runShuffleAnimation(token) {
 function initializeMatch() {
   state.nextStackId = 1;
   state.matchEvents = [];
+  state.replayFrames = [];
+  state.replayLastVersion = 0;
   state.pendingDealSourceRect = null;
   state.lastRenderedTurn = null;
   state.lastRenderedScores = { player: null, opponent: null };
@@ -2294,6 +2349,7 @@ function initializeMatch() {
   state.lastTaker = null;
   state.turn = Math.random() < 0.5 ? 'player' : 'opponent';
   state.message = state.turn === 'player' ? t('playerStarts') : state.selectedMode === 'pvp' ? t('pvpOpponentStarts') : t('botStarts');
+  captureReplayFrame('system', state.message, 'start', isPvpMode() ? state.pvpMatchVersion : 0);
   state.pendingPlay = null;
   state.pendingCaptureGroups = [];
   state.pendingSelection = [];
@@ -2334,6 +2390,7 @@ function pauseCurrentMatch() {
     lastDeal: state.lastDeal,
     nextStackId: state.nextStackId,
     matchEvents: state.matchEvents,
+    replayFrames: state.replayFrames,
     turn: state.turn,
     waitingForTableau: Boolean(state.waitingForTableau),
     pendingTableauCards: state.pendingTableauCards || [],
@@ -2375,6 +2432,7 @@ function recordAbandonedMatch(snapshot, reason = 'timeout') {
     abandoned: true,
     abandonReason: reason,
     events: Array.isArray(snapshot.matchEvents) ? snapshot.matchEvents.slice(-80) : [],
+    replayFrames: Array.isArray(snapshot.replayFrames) ? pvpClone(snapshot.replayFrames).slice(-72) : [], replayReady: Array.isArray(snapshot.replayFrames) && snapshot.replayFrames.length > 1,
     date: new Date().toLocaleDateString(settings.language === 'en' ? 'en-GB' : 'ro-RO', { day:'2-digit', month:'2-digit' }),
   };
   battleHistory = [entry, ...battleHistory].slice(0, 8);
@@ -2437,6 +2495,8 @@ function restoreMatchFromPause() {
   state.lastDeal = Boolean(snapshot.lastDeal);
   state.nextStackId = Number(snapshot.nextStackId || 1);
   state.matchEvents = Array.isArray(snapshot.matchEvents) ? snapshot.matchEvents : [];
+  state.replayFrames = Array.isArray(snapshot.replayFrames) ? snapshot.replayFrames : [];
+  state.replayLastVersion = 0;
   state.turn = snapshot.turn === 'opponent' ? 'opponent' : 'player';
   state.waitingForTableau = Boolean(snapshot.waitingForTableau);
   state.pendingTableauCards = Array.isArray(snapshot.pendingTableauCards) ? snapshot.pendingTableauCards : [];
@@ -2733,7 +2793,18 @@ $('cancelStackBtn').addEventListener('click', () => { playTone('button'); state.
 $('tableauDialog').addEventListener('cancel', event => event.preventDefault());
 
 $('openHistoryBtn').addEventListener('click', () => { playTone('button'); renderHistoryEntries(); $('historyDialog').showModal(); });
+$('historyEntries').addEventListener('click',event=>{const watch=event.target.closest('.history-watch-btn');if(!watch||watch.disabled)return;const entry=battleHistory[Number(watch.dataset.historyIndex)];if(entry)openReplayForEntry(entry);});
 $('closeHistoryBtn').addEventListener('click', () => { playTone('button'); $('historyDialog').close(); });
+$('replayPlayBtn').addEventListener('click',()=>{playTone('button');setReplayPlaying(!replayState.playing);});
+$('replayRestartBtn').addEventListener('click',()=>{replayState.frameIndex=0;replayState.elapsedMs=0;setReplayPlaying(true);});
+document.querySelectorAll('.replay-speed-btn').forEach(btn=>btn.addEventListener('click',()=>{replayState.speed=Number(btn.dataset.speed)||1;updateReplayControls();playTone('button');}));
+$('replayCloseBtn').addEventListener('click',()=>{setReplayPlaying(false);$('replayDialog')?.close();forceModalCleanup();});
+$('replayScrub').addEventListener('input',event=>{const pct=Number(event.target.value)/100,target=Math.max(0,Math.min(replayState.totalMs,pct*replayState.totalMs));let cursor=0,index=0;for(let x=0;x<replayState.durations.length;x++){if(cursor+replayState.durations[x]>=target){index=x;break;}cursor+=replayState.durations[x];index=x;}replayState.frameIndex=Math.min(index,replayState.frames.length-1);replayState.elapsedMs=Math.max(0,target-cursor);setReplayPlaying(false);renderReplayTimeline();});
+$('trainingLaunchBtn').addEventListener('click',()=>{playTone('button');$('rulesDialog')?.close();openTraining();});
+$('trainingHintBtn').addEventListener('click',()=>{showTrainingHint();playTone('button');});
+$('trainingPrevBtn').addEventListener('click',()=>{if(trainingState.lesson<=0)return;trainingState.lesson--;renderTraining();playTone('button');});
+$('trainingNextBtn').addEventListener('click',()=>{if(!trainingState.answered)return;if(trainingState.lesson>=trainingLessons.length-1){closeTraining();playTone('success');return;}trainingState.lesson++;renderTraining();playTone('button');});
+$('trainingCloseBtn').addEventListener('click',()=>{closeTraining();playTone('button');});
 $('languageSelect').addEventListener('change', event => { settings.language = event.target.value === 'en' ? 'en' : 'ro'; saveSettings(); applyLanguage(); playTone('success'); });
 
 $('tableZone').addEventListener('dragover', event => {
@@ -2767,7 +2838,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=083-pvp-features').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=086-watch-training').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {

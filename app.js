@@ -45,6 +45,10 @@ const state = {
   lastRenderedScores: { player: null, opponent: null },
   pendingDealSourceRect: null,
   turn: 'menu',
+  pvpMatchId: null,
+  pvpMatchVersion: 0,
+  pvpOpponent: null,
+  pvpTerminalHandled: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -83,6 +87,9 @@ const tabinetSupabase = window.supabase && window.supabase.createClient ? window
 let friendsRefreshTimer = null;
 let friendsHeartbeatTimer = null;
 let friendsBackgroundRefreshTimer = null;
+let pvpDashboardTimer = null;
+let pvpActionBusy = false;
+window.__tabinetPvpDashboard = { incoming_invites: [], outgoing_invites: [], queue_waiting: false, active_match: null };
 
 function getFriendsDeviceToken() {
   try {
@@ -191,8 +198,10 @@ function renderFriendProfileData(data) {
   $('friendProfileName').textContent = p.name || 'Jucător';
   $('friendProfileId').textContent = p.player_id || '';
   const online = Boolean(p.online ?? (p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 75000));
-  $('friendProfileStatus').textContent = friendLastSeenText(p.last_seen, online);
-  $('friendProfileStatus').className = 'friend-status ' + (online ? 'online' : 'offline');
+  if ($('friendProfileStatus')) {
+    $('friendProfileStatus').textContent = friendLastSeenText(p.last_seen, online);
+    $('friendProfileStatus').className = 'friend-status ' + (online ? 'online' : 'offline');
+  }
   if ($('friendProfileWinRate')) $('friendProfileWinRate').textContent = String(stats.win_rate ?? 0) + '%';
   if ($('friendProfile12h')) $('friendProfile12h').textContent = String(stats.last_12h ?? 0);
   if ($('friendProfileTotal')) $('friendProfileTotal').textContent = String(stats.matches ?? 0);
@@ -398,6 +407,188 @@ function respondToFriendRequest(requestId, accept) {
   }).then(result => { if (result && result.ok) return refreshFriendsData(); });
 }
 
+
+function isPvpMode() { return state.selectedMode === 'pvp'; }
+function pvpOpponentName() { return state.pvpOpponent?.name || (settings.language === 'en' ? 'Player' : 'Jucător'); }
+function pvpOpponentId() { return state.pvpOpponent?.player_id || ''; }
+function pvpClone(value) { try { return JSON.parse(JSON.stringify(value)); } catch { return value; } }
+
+function serializePvpState() {
+  return {
+    version:1, owner_player_id:profile.id, deck:pvpClone(state.deck), tableStacks:pvpClone(state.tableStacks),
+    hand:pvpClone(state.hand), opponentHand:pvpClone(state.opponentHand), score:Number(state.score||0),
+    opponentScore:Number(state.opponentScore||0), captured:pvpClone(state.captured), played:pvpClone(state.played),
+    tableauMarkers:pvpClone(state.tableauMarkers), lastTaker:state.lastTaker, message:state.message||'',
+    round:Number(state.round||1), lastDeal:Boolean(state.lastDeal), nextStackId:Number(state.nextStackId||1),
+    matchEvents:pvpClone(Array.isArray(state.matchEvents)?state.matchEvents.slice(-80):[])
+  };
+}
+
+function applyPvpMatchState(match) {
+  if (!match?.state) return false;
+  const payload=match.state;
+  const ownerIsMe=String(payload.owner_player_id||'').toUpperCase()===String(profile.id||'').toUpperCase();
+  state.deck=pvpClone(payload.deck||[]);
+  state.tableStacks=pvpClone(payload.tableStacks||[]);
+  state.hand=pvpClone(ownerIsMe?(payload.hand||[]):(payload.opponentHand||[]));
+  state.opponentHand=pvpClone(ownerIsMe?(payload.opponentHand||[]):(payload.hand||[]));
+  state.score=Number(ownerIsMe?payload.score:payload.opponentScore)||0;
+  state.opponentScore=Number(ownerIsMe?payload.opponentScore:payload.score)||0;
+  const captured=payload.captured||{player:[],opponent:[]}, played=payload.played||{player:[],opponent:[]}, markers=payload.tableauMarkers||{player:[],opponent:[]};
+  state.captured=ownerIsMe?pvpClone(captured):{player:pvpClone(captured.opponent||[]),opponent:pvpClone(captured.player||[])};
+  state.played=ownerIsMe?pvpClone(played):{player:pvpClone(played.opponent||[]),opponent:pvpClone(played.player||[])};
+  state.tableauMarkers=ownerIsMe?pvpClone(markers):{player:pvpClone(markers.opponent||[]),opponent:pvpClone(markers.player||[])};
+  state.lastTaker=ownerIsMe?payload.lastTaker:payload.lastTaker==='player'?'opponent':payload.lastTaker==='opponent'?'player':payload.lastTaker;
+  state.message=String(payload.message||''); state.round=Number(payload.round||1); state.lastDeal=Boolean(payload.lastDeal);
+  state.nextStackId=Number(payload.nextStackId||1); state.matchEvents=Array.isArray(payload.matchEvents)?pvpClone(payload.matchEvents):[];
+  state.pendingPlay=null; state.pendingCaptureGroups=[]; state.pendingSelection=[]; state.pendingStackCard=null; state.pendingPlaySourceRect=null;
+  state.pendingTableauCards=[]; state.waitingForTableau=false; state.dealing=false; state.animating=false;
+  state.pvpMatchVersion=Number(match.version||0);
+  const turnId=String(match.turn_player_id||'').toUpperCase();
+  state.turn=turnId===String(profile.id||'').toUpperCase()?'player':'opponent';
+  if(match.status!=='active') state.turn='done';
+  ['captureDialog','tableauDialog','stackDialog'].forEach(id=>{if($(id)?.open)$(id).close();});
+  renderGame(); return true;
+}
+
+async function fetchPvpMatch(matchId){
+  if(!matchId)return null;
+  const result=await tabinetRpc('tabinet_get_pvp_match',{p_match_id:matchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+  return result?.ok?result.match:null;
+}
+function pvpTurnPlayerId(){return state.turn==='player'?profile.id:pvpOpponentId();}
+function pvpWinnerFromLocalState(){return state.score===state.opponentScore?null:state.score>state.opponentScore?profile.id:pvpOpponentId();}
+
+async function syncPvpInitialize(){
+  if(!isPvpMode()||!state.pvpMatchId)return;
+  try{
+    const result=await tabinetRpc('tabinet_initialize_pvp_match',{p_match_id:state.pvpMatchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken(),p_state:serializePvpState(),p_turn_player_id:pvpTurnPlayerId()});
+    if(result?.ok)state.pvpMatchVersion=Number(result.version||1);
+    else {const latest=await fetchPvpMatch(state.pvpMatchId);if(latest?.state)applyPvpMatchState(latest);}
+  }catch{}
+}
+
+async function syncPvpState(status='active',winnerId=null){
+  if(!isPvpMode()||!state.pvpMatchId)return;
+  try{
+    const result=await tabinetRpc('tabinet_update_pvp_match',{
+      p_match_id:state.pvpMatchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken(),p_state:serializePvpState(),
+      p_turn_player_id:status==='active'?pvpTurnPlayerId():null,p_status:status,p_winner_player_id:winnerId,p_expected_version:Number(state.pvpMatchVersion||0)
+    });
+    if(result?.ok)state.pvpMatchVersion=Number(result.version||state.pvpMatchVersion);
+    else if(result?.error==='version_conflict'||result?.error==='not_your_turn'){const latest=await fetchPvpMatch(state.pvpMatchId);if(latest?.state)applyPvpMatchState(latest);}
+  }catch{}
+}
+
+function recordPvpBattleResult(abandoned=false,winnerId=null){
+  if(state.pvpTerminalHandled)return;
+  const winner=winnerId||pvpWinnerFromLocalState();
+  const result=winner===null?'draw':winner===profile.id?'win':'loss';
+  battleHistory=[{
+    id:Date.now(),timestamp:Date.now(),mode:'player',difficulty:null,playerScore:Number(state.score||0),botScore:Number(state.opponentScore||0),
+    opponentName:pvpOpponentName(),result,winner:result==='draw'?'draw':winner===profile.id?'player':'opponent',abandoned:Boolean(abandoned),
+    events:Array.isArray(state.matchEvents)?state.matchEvents.slice(-80):[],
+    date:new Date().toLocaleDateString(settings.language==='en'?'en-GB':'ro-RO',{day:'2-digit',month:'2-digit'})
+  },...battleHistory].slice(0,8);
+  saveBattleHistory(); state.pvpTerminalHandled=true; renderBattleLog(); renderHistoryEntries(); renderProfile();
+}
+
+async function showPvpTerminal(match,suppressDialog=false){
+  if(!match||match.id!==state.pvpMatchId||state.pvpTerminalHandled)return;
+  if(match.state)applyPvpMatchState(match);
+  state.turn='done';state.dealing=false;state.animating=false;
+  const winner=String(match.winner_player_id||'').toUpperCase(),mine=String(profile.id||'').toUpperCase(),abandoned=match.status==='abandoned';
+  state.message=abandoned?(winner===mine?t('pvpWonAbandoned'):t('pvpLostAbandoned')):(state.score===state.opponentScore?t('gameOverDraw'):state.score>state.opponentScore?t('pvpWon'):t('pvpLost'));
+  renderGame();recordPvpBattleResult(abandoned,match.winner_player_id||pvpWinnerFromLocalState());
+  if(suppressDialog)return;
+  $('finalPlayerScore').textContent=state.score;$('finalBotScore').textContent=state.opponentScore;$('finalBotLabel').textContent=pvpOpponentName();
+  $('gameOverTitle').textContent=abandoned?(winner===mine?t('pvpWonAbandoned'):t('pvpLostAbandoned')):(state.score===state.opponentScore?t('gameOverDraw'):state.score>state.opponentScore?t('gameOverWin'):t('pvpLost'));
+  $('gameOverCopy').textContent=abandoned?t('pvpAbandonedCopy'):t('pvpFinishedCopy'); if(!$('gameOverDialog').open)$('gameOverDialog').showModal();
+}
+
+async function enterPvpMatch(matchId){
+  if(!matchId||pvpActionBusy)return;
+  pvpActionBusy=true;
+  try{
+    const match=await fetchPvpMatch(matchId);if(!match)return;
+    state.selectedMode='pvp';state.pvpMatchId=match.id;state.pvpMatchVersion=Number(match.version||0);state.pvpOpponent=match.opponent||null;state.pvpTerminalHandled=false;
+    if(match.status!=='active'){await showPvpTerminal(match);return;}
+    if(match.state){applyPvpMatchState(match);showScreen('gameScreen');return;}
+    const token=++state.matchToken;state.turn='menu';state.dealing=true;state.animating=false;state.deck=[];state.hand=[];state.opponentHand=[];state.tableStacks=[];
+    showScreen('gameScreen');renderGame();await runShuffleAnimation(token);if(token!==state.matchToken)return;
+    const latest=await fetchPvpMatch(matchId);if(!latest)return;state.pvpOpponent=latest.opponent||state.pvpOpponent;
+    if(latest.status!=='active'){await showPvpTerminal(latest);return;}
+    if(latest.state){applyPvpMatchState(latest);showScreen('gameScreen');}else initializeMatch();
+  }finally{pvpActionBusy=false;}
+}
+
+function renderPvpInviteNotification(requests){
+  const box=$('pvpInviteNotification');if(!box)return;const rows=Array.isArray(requests)?requests:[];
+  if(!rows.length||state.screen==='game'){box.classList.add('hidden');box.innerHTML='';return;}
+  box.classList.remove('hidden');
+  box.innerHTML=rows.slice(0,3).map(req=>'<article class="pvp-invite-item"><div class="pvp-invite-copy"><span class="pvp-invite-kicker">'+escapeHtml(t('pvpInviteKicker'))+'</span><strong>'+escapeHtml(req.name||'Jucător')+'</strong><small>'+escapeHtml(t('pvpInviteCopy'))+'</small></div><div class="pvp-invite-actions"><button class="primary small-btn pvp-invite-accept" type="button" data-invite-id="'+escapeHtml(req.id||'')+'">'+escapeHtml(t('pvpAccept'))+'</button><button class="secondary small-btn pvp-invite-reject" type="button" data-invite-id="'+escapeHtml(req.id||'')+'">'+escapeHtml(t('pvpReject'))+'</button></div></article>').join('');
+}
+function pvpOutgoingSet(){return new Set((window.__tabinetPvpDashboard?.outgoing_invites||[]).map(item=>String(item.player_id||'').toUpperCase()));}
+function renderPvpFriends(){
+  const list=$('pvpFriendsList');if(!list)return;const friends=Array.isArray(window.__tabinetFriends)?window.__tabinetFriends:[],outgoing=pvpOutgoingSet();list.innerHTML='';
+  if(!friends.length){list.innerHTML='<div class="friends-empty">'+escapeHtml(t('pvpNoFriends'))+'</div>';return;}
+  friends.forEach(friend=>{
+    const key=String(friend.player_id||'').toUpperCase(),pending=outgoing.has(key),row=document.createElement('article');row.className='pvp-friend-row';
+    row.innerHTML='<div class="friend-user">'+friendAvatarMarkup(friend.avatar)+'<div class="friend-user-copy"><strong>'+escapeHtml(friend.name||'Jucător')+'</strong><small>'+escapeHtml(friend.player_id||'')+'</small></div></div><div class="pvp-friend-actions"><span class="friend-status '+(friend.online?'online':'offline')+'"><i></i>'+escapeHtml(friendLastSeenText(friend.last_seen,Boolean(friend.online)))+'</span><button class="primary small-btn pvp-invite-friend" type="button" data-player-id="'+escapeHtml(friend.player_id||'')+'"'+(pending?' disabled':'')+'>'+escapeHtml(pending?t('pvpInviteSent'):t('pvpInviteFriend'))+'</button></div>';
+    list.appendChild(row);
+  });
+}
+async function refreshPvpDashboard(){
+  if(!tabinetSupabase||!profile?.id||document.visibilityState==='hidden')return;
+  try{
+    const result=await tabinetRpc('tabinet_get_pvp_dashboard',{p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});if(!result?.ok)return;
+    window.__tabinetPvpDashboard=result;renderPvpInviteNotification(result.incoming_invites||[]);renderPvpFriends();
+    const active=result.active_match;
+    if(state.pvpMatchId&&(!active||String(active.id)!==String(state.pvpMatchId))){
+      const previous=await fetchPvpMatch(state.pvpMatchId);
+      if(previous&&previous.status!=='active'){
+        const hasNew=Boolean(active);
+        if(!state.pvpTerminalHandled){if(previous.state)applyPvpMatchState(previous);recordPvpBattleResult(previous.status==='abandoned',previous.winner_player_id||null);}
+        if(!hasNew){await showPvpTerminal(previous);return;}
+        state.pvpMatchId=null;state.pvpMatchVersion=0;state.pvpOpponent=null;state.pvpTerminalHandled=false;
+      }
+    }
+    if(active){
+      if(String(state.pvpMatchId||'')!==String(active.id||''))void enterPvpMatch(active.id);
+      else if(Number(active.version||0)>Number(state.pvpMatchVersion||0)){const current=await fetchPvpMatch(active.id);if(current?.state)applyPvpMatchState(current);}
+    }
+  }catch{}
+}
+function startPvpPolling(){if(pvpDashboardTimer)clearInterval(pvpDashboardTimer);void refreshPvpDashboard();pvpDashboardTimer=setInterval(()=>{if(document.visibilityState==='visible')void refreshPvpDashboard();},1800);}
+function openPvpMode(){renderPvpFriends();showScreen('pvpModeScreen');}
+function openPvpFriends(){renderPvpFriends();showScreen('pvpFriendsScreen');void refreshFriendsData();}
+async function sendPvpInvite(playerId){
+  if(pvpActionBusy)return;pvpActionBusy=true;
+  const button=Array.from(document.querySelectorAll('.pvp-invite-friend')).find(btn=>String(btn.dataset.playerId||'')===String(playerId||''));if(button)button.disabled=true;
+  try{const result=await tabinetRpc('tabinet_send_pvp_invite',{p_from_player_id:profile.id,p_to_player_id:playerId,p_device_token:getFriendsDeviceToken()});if(result?.ok)await refreshPvpDashboard();else{if(button)button.disabled=false;alert(t('pvpInviteError'));}}
+  catch{if(button)button.disabled=false;alert(t('pvpBackendError'));}finally{pvpActionBusy=false;}
+}
+async function respondToPvpInvite(inviteId,accept){
+  if(pvpActionBusy)return;pvpActionBusy=true;
+  try{const result=await tabinetRpc('tabinet_respond_pvp_invite',{p_invite_id:inviteId,p_accept:Boolean(accept),p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});if(result?.ok&&result.status==='accepted'&&result.match_id)await enterPvpMatch(result.match_id);else await refreshPvpDashboard();}
+  catch{alert(t('pvpBackendError'));}finally{pvpActionBusy=false;}
+}
+async function startPvpMatchmaking(){
+  if(pvpActionBusy)return;pvpActionBusy=true;state.selectedMode='pvp';showScreen('pvpMatchmakingScreen');if($('pvpMatchmakingStatus'))$('pvpMatchmakingStatus').textContent=t('pvpSearching');
+  try{const result=await tabinetRpc('tabinet_join_pvp_matchmaking',{p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});if(result?.ok&&result.status==='matched'&&result.match_id){if($('pvpMatchmakingStatus'))$('pvpMatchmakingStatus').textContent=t('pvpMatched');await enterPvpMatch(result.match_id);}else if(result?.ok&&result.status==='waiting'){if($('pvpMatchmakingStatus'))$('pvpMatchmakingStatus').textContent=t('pvpSearching');}else if($('pvpMatchmakingStatus'))$('pvpMatchmakingStatus').textContent=t('pvpMatchError');}
+  catch{if($('pvpMatchmakingStatus'))$('pvpMatchmakingStatus').textContent=t('pvpBackendError');}finally{pvpActionBusy=false;}
+}
+async function cancelPvpMatchmaking(){
+  try{await tabinetRpc('tabinet_leave_pvp_matchmaking',{p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});}catch{}
+  state.selectedMode='bot';showScreen('pvpModeScreen');
+}
+async function abandonPvpMatch(){
+  const matchId=state.pvpMatchId;if(!matchId){goToMenu();return;}
+  try{const result=await tabinetRpc('tabinet_abandon_pvp_match',{p_match_id:matchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});if(result?.ok)recordPvpBattleResult(true,pvpOpponentId());}catch{}
+  state.matchToken+=1;state.pvpMatchId=null;state.pvpMatchVersion=0;state.pvpOpponent=null;state.pvpTerminalHandled=false;state.selectedMode='bot';state.turn='menu';state.message='';
+  if($('gameOverDialog')?.open)$('gameOverDialog').close();showScreen('menuScreen');
+}
+
 function startFriendsHeartbeat() {
   if (!tabinetSupabase) return;
   void syncProfileOnline();
@@ -409,12 +600,13 @@ function startFriendsHeartbeat() {
     }
   }, 30000);
   friendsBackgroundRefreshTimer = setInterval(() => {
-    if (document.visibilityState === 'visible') void refreshFriendsData();
+    if (document.visibilityState === 'visible') { void refreshFriendsData(); void refreshPvpDashboard(); }
   }, 5000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       void tabinetRpc('tabinet_heartbeat', {p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
       void refreshFriendsData();
+      void refreshPvpDashboard();
     }
   }, {passive:true});
 }
@@ -426,6 +618,8 @@ function startFriendsRealtime(){
     window.__tabinetFriendsChannel=tabinetSupabase.channel('tabinet-friends-'+profile.id)
       .on('postgres_changes',{event:'*',schema:'public',table:'tabinet_friend_requests'},()=>void refreshFriendsData())
       .on('postgres_changes',{event:'*',schema:'public',table:'tabinet_friendships'},()=>void refreshFriendsData())
+      .on('postgres_changes',{event:'*',schema:'public',table:'tabinet_pvp_invites'},()=>void refreshPvpDashboard())
+      .on('postgres_changes',{event:'*',schema:'public',table:'tabinet_pvp_matches'},()=>void refreshPvpDashboard())
       .subscribe();
   }catch{}
 }
@@ -977,7 +1171,8 @@ const I18N = {
   ro: {
     menuTitle: 'Joacă simplu. Ia tot.', menuSubtitle: 'Intră într-o partidă în câteva secunde.', menuPill: 'MVP • BOT DISPONIBIL', menuHeroTitle: 'O partidă relaxată, direct în browser.', menuHeroCopy: 'Nu ai nevoie de instalări. Alegi adversarul, dificultatea și intri la masă.', menuVersion: 'v0.7.6 • Profil + statistici + start aleator',
     settings: 'Setări', settingsCopy: 'Sunete, animații și limbă', friendsMenu: 'Prieteni', friendsMenuCopy: 'Adaugă și gestionează prietenii', rules: 'Reguli', rulesCopy: 'Vezi cum se joacă', play: 'Joacă', back: 'Înapoi',
-    step1: 'PASUL 1', modeTitle: 'Cum vrei să joci?', modeCopy: 'Alege un adversar. Multiplayer-ul cu alt jucător vine în curând.', bot: 'Cu bot', botCopy: 'Joacă acum împotriva unui adversar controlat de joc.', choose: 'Alege →', realCopy: 'Conectarea online este pregătită pentru o etapă viitoare.', historyKicker: 'ISTORIC', historyTitle: 'Log-uri meciuri', historyCopyMode: 'Vezi cu cine ai jucat, scorurile și cum a decurs partida.', viewLogs: 'Vezi log-urile',
+    step1: 'PASUL 1', modeTitle: 'Cum vrei să joci?', modeCopy: 'Alege un adversar. Multiplayer-ul cu alt jucător vine în curând.', bot: 'Cu bot', botCopy: 'Joacă acum împotriva unui adversar controlat de joc.', choose: 'Alege →', realPlayer:'Cu player real', realCopy:'Joacă online cu un prieten sau caută un adversar.',
+    pvpStep:'PASUL 2', pvpModeTitle:'Cum vrei să alegi adversarul?', pvpModeCopy:'Provoacă direct un prieten sau lasă jocul să găsească un jucător disponibil.', pvpFriendTitle:'Contra unui prieten', pvpFriendCopy:'Alege unul dintre prietenii tăi și trimite-i invitația.', pvpMatchmakingChoiceTitle:'Matchmaking', pvpMatchmakingChoiceCopy:'Intră în coadă și te potrivim automat cu un jucător.', pvpFriendsTitle:'Alege un prieten', pvpFriendsCopy:'Invitația apare în meniul principal al prietenului și poate fi acceptată sau refuzată.', pvpMatchmakingTitle:'Căutăm un adversar', pvpSearchCopy:'Te conectăm cu primul jucător disponibil.', pvpSearching:'Se caută un adversar…', pvpMatched:'Adversar găsit! Se pregătește masa…', pvpMatchError:'Nu am putut intra în matchmaking.', pvpNoFriends:'Nu ai încă prieteni pe care îi poți provoca.', pvpInviteFriend:'Provoacă', pvpInviteSent:'Invitație trimisă', pvpInviteKicker:'INVITAȚIE LA MECI', pvpInviteCopy:'vrea să joace Tabinet cu tine.', pvpAccept:'Acceptă', pvpReject:'Refuză', pvpInviteError:'Nu s-a putut trimite invitația.', pvpBackendError:'Serviciul online nu este disponibil momentan.', pvpPlayerLabel:'PLAYER', pvpWaitingOpponent:'Așteaptă mutarea adversarului…', pvpOpponentThinking:'Adversarul se gândește…', pvpWaitHint:'Așteaptă mutarea adversarului.', pvpOpponentStarts:'Adversarul începe această mână.', matchPlayer:'Meci PvP', pvpWon:'Ai câștigat.', pvpLost:'Ai pierdut.', pvpWonAbandoned:'Ai câștigat prin abandon.', pvpLostAbandoned:'Ai pierdut prin abandon.', pvpAbandonedCopy:'Meciul s-a încheiat deoarece unul dintre jucători a abandonat.', pvpFinishedCopy:'Meciul PvP s-a încheiat.', historyKicker: 'ISTORIC', historyTitle: 'Log-uri meciuri', historyCopyMode: 'Vezi cu cine ai jucat, scorurile și cum a decurs partida.', viewLogs: 'Vezi log-urile',
     step2: 'PASUL 2', difficultyTitle: 'Cât de greu vrei să fie?', difficultyCopy: 'Alege ritmul și nivelul botului.', easy: 'Ușor', easyCopy: 'Bot relaxat, potrivit pentru primele partide.', medium: 'Mediu', mediumCopy: 'Bot echilibrat, caută capturi și puncte.', hard: 'Mare', hardCopy: 'Bot competitiv, analizează mai multe mutări.',
     matchBot: 'Meci cu bot', deck: 'în pachet', table: 'MASĂ', opponent: 'ADVERSAR', yourHand: 'MÂNA TA', you:'TU', botLabel:'BOT', pile: 'teanc de puncte', playerTableauLabel:'TABLELE', opponentTableauLabel:'TABLELE', playerTableauActive:'active', opponentTableauActive:'active', newGame: 'Joc nou', round: 'MÂNA', lastHand: 'ULTIMA MÂNĂ', yourTurn: 'Este rândul tău', botThinking: 'Botul se gândește…', gameEnded: 'Partida s-a încheiat', chooseCard: 'Alege o carte.', waitBot: 'Așteaptă mutarea botului.', tapHint: 'Click = joacă · Ține apăsat = stivă · Trage pe masă = pune fără captură.', waitHint: 'Așteaptă mutarea botului.', deckRemaining:'în pachet', battleLogTitle:'BATTLE LOG', recentMatches:'ultimele meciuri', playerStarts:'Începi tu.', botStarts:'Botul începe această mână.',
     captureKicker:'CAPTURĂ', captureTitle:'Ai mai multe variante', cancel:'Anulează', takeCards:'Ia cărțile', selected:'Ai selectat', cardsWord:'cărți', cardWord:'carte', selectCapture:'Selectează cel puțin o captură.', optionTarget:'Cu {card} ai {count} variante. Selectează una sau mai multe variante care nu folosesc aceleași cărți.',
@@ -994,7 +1189,8 @@ const I18N = {
   en: {
     menuTitle: 'Play simple. Take it all.', menuSubtitle: 'Get into a match in a few seconds.', menuPill: 'MVP • BOT AVAILABLE', menuHeroTitle: 'A relaxed match, right in your browser.', menuHeroCopy: 'No installs needed. Choose your opponent, difficulty and sit at the table.', menuVersion: 'v0.7.6 • Profile + stats + random starter',
     settings: 'Settings', settingsCopy: 'Sounds, animations and language', friendsMenu: 'Friends', friendsMenuCopy: 'Add and manage friends', rules: 'Rules', rulesCopy: 'See how to play', play: 'Play', back: 'Back',
-    step1: 'STEP 1', modeTitle: 'How do you want to play?', modeCopy: 'Choose an opponent. Online multiplayer is coming soon.', bot: 'Play vs bot', botCopy: 'Play now against a game-controlled opponent.', choose: 'Choose →', realCopy: 'Online connection is prepared for a future stage.', historyKicker: 'HISTORY', historyTitle: 'Match logs', historyCopyMode: 'See who you played, the scores and how the match went.', viewLogs: 'View logs',
+    step1: 'STEP 1', modeTitle: 'How do you want to play?', modeCopy: 'Choose an opponent. Online multiplayer is coming soon.', bot: 'Play vs bot', botCopy: 'Play now against a game-controlled opponent.', choose: 'Choose →', realPlayer:'Real player', realCopy:'Play online with a friend or find an opponent.',
+    pvpStep:'STEP 2', pvpModeTitle:'How do you want to choose an opponent?', pvpModeCopy:'Challenge a friend directly or let matchmaking find an available player.', pvpFriendTitle:'Play a friend', pvpFriendCopy:'Choose one of your friends and send an invite.', pvpMatchmakingChoiceTitle:'Matchmaking', pvpMatchmakingChoiceCopy:'Join the queue and we will pair you with a player automatically.', pvpFriendsTitle:'Choose a friend', pvpFriendsCopy:'The invite appears in your friend’s main menu and can be accepted or declined.', pvpMatchmakingTitle:'Finding an opponent', pvpSearchCopy:'We are connecting you with the first available player.', pvpSearching:'Looking for an opponent…', pvpMatched:'Opponent found! Setting up the table…', pvpMatchError:'We could not join matchmaking.', pvpNoFriends:'You have no friends you can challenge yet.', pvpInviteFriend:'Challenge', pvpInviteSent:'Invite sent', pvpInviteKicker:'MATCH INVITE', pvpInviteCopy:'wants to play Tabinet with you.', pvpAccept:'Accept', pvpReject:'Decline', pvpInviteError:'The invite could not be sent.', pvpBackendError:'The online service is unavailable right now.', pvpPlayerLabel:'PLAYER', pvpWaitingOpponent:'Waiting for your opponent…', pvpOpponentThinking:'Your opponent is thinking…', pvpWaitHint:'Wait for your opponent’s move.', pvpOpponentStarts:'Your opponent starts this hand.', matchPlayer:'PvP match', pvpWon:'You won.', pvpLost:'You lost.', pvpWonAbandoned:'You won by abandonment.', pvpLostAbandoned:'You lost by abandonment.', pvpAbandonedCopy:'The match ended because one player abandoned it.', pvpFinishedCopy:'The PvP match has ended.', historyKicker: 'HISTORY', historyTitle: 'Match logs', historyCopyMode: 'See who you played, the scores and how the match went.', viewLogs: 'View logs',
     step2: 'STEP 2', difficultyTitle: 'How hard should it be?', difficultyCopy: 'Choose the bot pace and level.', easy: 'Easy', easyCopy: 'Relaxed bot, good for first matches.', medium: 'Medium', mediumCopy: 'Balanced bot, looks for captures and points.', hard: 'Hard', hardCopy: 'Competitive bot, analyzes more moves.',
     matchBot: 'Match vs bot', deck: 'in deck', table: 'TABLE', opponent: 'OPPONENT', yourHand: 'YOUR HAND', you:'YOU', botLabel:'BOT', pile: 'point pile', playerTableauLabel:'TABLES', opponentTableauLabel:'TABLES', playerTableauActive:'active', opponentTableauActive:'active', newGame: 'New game', round: 'HAND', lastHand: 'LAST HAND', yourTurn: 'Your turn', botThinking: 'The bot is thinking…', gameEnded: 'Match ended', chooseCard: 'Choose a card.', waitBot: 'Wait for the bot move.', tapHint: 'Click = play · Hold = stack · Drag onto the table = place without capturing.', waitHint: 'Wait for the bot move.', deckRemaining:'in deck', battleLogTitle:'BATTLE LOG', recentMatches:'recent matches', playerStarts:'You start.', botStarts:'The bot starts this hand.',
     captureKicker:'CAPTURE', captureTitle:'You have multiple options', cancel:'Cancel', takeCards:'Take cards', selected:'You selected', cardsWord:'cards', cardWord:'card', selectCapture:'Select at least one capture.', optionTarget:'With {card} you have {count} options. Select one or more options that do not reuse the same cards.',
@@ -1058,8 +1254,9 @@ function applyLanguage() {
   $('modeBackBtn').textContent = `← ${t('back')}`;
   $('difficultyBackBtn').textContent = `← ${t('back')}`;
   setNested('botModeBtn','bot','botCopy','choose');
-  const real = document.querySelector('#modeScreen .disabled-choice');
-  if (real) { real.querySelector('.big-choice-title').textContent=t('realPlayer'); real.querySelector('.big-choice-copy').textContent=t('realCopy'); real.querySelector('.choice-cta').textContent=t('comingSoon'); }
+  const real = $('realPlayerBtn');
+  if (real) { const title=real.querySelector('.big-choice-title'),copy=real.querySelector('.big-choice-copy'),cta=real.querySelector('.choice-cta'); if(title)title.textContent=t('realPlayer'); if(copy)copy.textContent=t('realCopy'); if(cta)cta.textContent=t('choose'); real.disabled=false; }
+  set('pvpModeKicker','pvpStep'); set('pvpModeTitle','pvpModeTitle'); set('pvpModeCopy','pvpModeCopy'); set('pvpFriendTitle','pvpFriendTitle'); set('pvpFriendCopy','pvpFriendCopy'); set('pvpMatchmakingChoiceTitle','pvpMatchmakingChoiceTitle'); set('pvpMatchmakingChoiceCopy','pvpMatchmakingChoiceCopy'); set('pvpFriendsTitle','pvpFriendsTitle'); set('pvpFriendsCopy','pvpFriendsCopy'); set('pvpMatchmakingTitle','pvpMatchmakingTitle'); set('pvpSearchingHint','pvpSearchCopy'); set('pvpBackBtn','back'); set('pvpFriendsBackBtn','back'); set('pvpMatchmakingCancelBtn','back'); renderPvpInviteNotification(window.__tabinetPvpDashboard?.incoming_invites||[]); renderPvpFriends();
   const difficultyText = {
     easy:['easy','easyCopy'], medium:['medium','mediumCopy'], hard:['hard','hardCopy']
   };
@@ -1073,8 +1270,8 @@ function applyLanguage() {
   const modeCopy = $('modeScreen')?.querySelector('.screen-heading p:last-child'); if(modeCopy) modeCopy.textContent=t('modeCopy');
   const diffHeading = $('difficultyScreen')?.querySelector('.screen-heading .eyebrow'); if(diffHeading) diffHeading.textContent=t('step2');
   const diffCopy = $('difficultyScreen')?.querySelector('.screen-heading p:last-child'); if(diffCopy) diffCopy.textContent=t('difficultyCopy');
-  set('gameTitle','matchBot');
-  set('playerRailLabel','you'); set('opponentRailLabel','botLabel'); set('deckCaption','deckRemaining');
+  set('gameTitle',state.selectedMode==='pvp'?'matchPlayer':'matchBot');
+  set('playerRailLabel','you'); if($('opponentRailLabel'))$('opponentRailLabel').textContent=state.selectedMode==='pvp'?pvpOpponentName():t('botLabel'); if($('opponentChipName'))$('opponentChipName').textContent=state.selectedMode==='pvp'?pvpOpponentName():t('botLabel'); if($('botMeta'))$('botMeta').textContent=state.selectedMode==='pvp'?t('pvpPlayerLabel'):difficultyLabel(state.difficulty); set('deckCaption','deckRemaining');
   set('battleLogTitle','battleLogTitle'); set('recentMatches','recentMatches');
   if ($('handHint')) $('handHint').textContent = state.turn === 'player' ? t('tapHint') : t('waitHint');
   $('playerTurnMeta').textContent = state.turn === 'player' ? t('yourTurn') : t('waitBot');
@@ -1093,9 +1290,9 @@ function applyLanguage() {
   $('gameSettingsBtn').setAttribute('aria-label', t('settings'));
   $('menuInstallBtn').setAttribute('aria-label', settings.language==='en'?'Install PWA':'Instalează PWA');
   const finalK = $('gameOverDialog')?.querySelector('.dialog-kicker'); if(finalK) finalK.textContent=t('gameOverKicker');
-  const gameCopy = $('gameOverCopy'); if(gameCopy) gameCopy.textContent=t('gameOverCopy');
+  const gameCopy = $('gameOverCopy'); if(gameCopy) gameCopy.textContent=state.selectedMode==='pvp'?t('pvpFinishedCopy'):t('gameOverCopy');
   const gameOverTitle = $('gameOverTitle');
-  if (gameOverTitle && state.turn === 'done') gameOverTitle.textContent = state.score === state.opponentScore ? t('gameOverDraw') : state.score > state.opponentScore ? t('gameOverWin') : t('gameOverLoss');
+  if (gameOverTitle && state.turn === 'done') gameOverTitle.textContent = state.score === state.opponentScore ? t('gameOverDraw') : state.score > state.opponentScore ? t('gameOverWin') : state.selectedMode === 'pvp' ? t('pvpLost') : t('gameOverLoss');
   updateSettingsUI(); renderBattleLog(); renderHistoryEntries(); renderProfile(); renderResumeBar();
 }
 
@@ -1412,10 +1609,13 @@ function renderGame() {
   const opponentRailLabel = $('opponentRailLabel'); if (opponentRailLabel) opponentRailLabel.textContent = t('botLabel');
   const battleLogTitle = $('battleLogTitle'); if (battleLogTitle) battleLogTitle.textContent = t('battleLogTitle');
   const recentMatches = $('recentMatches'); if (recentMatches) recentMatches.textContent = t('recentMatches');
-  $('botMeta').textContent = difficultyLabel(state.difficulty);
-  $('playerTurnMeta').textContent = state.turn === 'player' ? t('yourTurn') : t('waitBot');
-  $('turnBanner').textContent = state.turn === 'player' ? t('yourTurn') : state.turn === 'opponent' ? t('botThinking') : t('gameEnded');
-  $('handHint').textContent = state.turn === 'player' ? t('tapHint') : t('waitHint');
+  const gameIsPvp=state.selectedMode==='pvp';
+  $('botMeta').textContent=gameIsPvp?t('pvpPlayerLabel'):difficultyLabel(state.difficulty);
+  if($('opponentChipName'))$('opponentChipName').textContent=gameIsPvp?pvpOpponentName():t('botLabel');
+  if($('opponentRailLabel'))$('opponentRailLabel').textContent=gameIsPvp?pvpOpponentName():t('botLabel');
+  $('playerTurnMeta').textContent=state.turn==='player'?t('yourTurn'):gameIsPvp?t('pvpWaitingOpponent'):t('waitBot');
+  $('turnBanner').textContent=state.turn==='player'?t('yourTurn'):state.turn==='opponent'?(gameIsPvp?t('pvpOpponentThinking'):t('botThinking')):t('gameEnded');
+  $('handHint').textContent=state.turn==='player'?t('tapHint'):gameIsPvp?t('pvpWaitHint'):t('waitHint');
   $('tableCount').textContent = `${tableCount} ${wordCards(tableCount)} · ${state.tableStacks.length} ${state.tableStacks.length === 1 ? (settings.language==='en'?'stack':'stivă') : (settings.language==='en'?'stacks':'stive')}`;
   $('gameLog').textContent = state.message;
   $('scoreHelp').textContent = state.lastDeal ? `${t('lastHand')} · ${settings.language==='en'?'Tables active':'Tabla activă'}: ${state.tableauMarkers.player.length}-${state.tableauMarkers.opponent.length}` : `${settings.language==='en'?'Tables active':'Tabla activă'}: ${state.tableauMarkers.player.length}-${state.tableauMarkers.opponent.length}`;
@@ -1828,7 +2028,8 @@ function finishTurnOrDeal() {
       if (dealNextHands()) {
         state.turn = current === 'player' ? 'opponent' : 'player';
         renderGame();
-        if (state.turn === 'opponent') void opponentMove(state.matchToken);
+        if (isPvpMode()) void syncPvpState('active');
+        else if (state.turn === 'opponent') void opponentMove(state.matchToken);
         return;
       }
     }
@@ -1838,7 +2039,8 @@ function finishTurnOrDeal() {
 
   state.turn = state.turn === 'player' ? 'opponent' : 'player';
   renderGame();
-  if (state.turn === 'opponent') void opponentMove(state.matchToken);
+  if (isPvpMode()) void syncPvpState('active');
+  else if (state.turn === 'opponent') void opponentMove(state.matchToken);
 }
 
 function recordBattleResult() {
@@ -1876,21 +2078,24 @@ function endGame() {
     state.tableStacks = [];
     state.message += gained ? t('lastCapture',{who:who==='player'?t('resultYou'):t('resultBot'),count:remaining.length,gain:gained,points:pointsWord(gained)}) : t('lastCaptureNoPoints',{who:who==='player'?t('resultYou'):t('resultBot'),count:remaining.length});
   }
+  const wasPvp=isPvpMode();
   state.turn = 'done';
   addMatchEvent(state.lastTaker || 'system', state.message, 'end');
   renderGame();
-  recordBattleResult();
-  renderBattleLog();
+  const winnerId=pvpWinnerFromLocalState();
+  if(wasPvp){recordPvpBattleResult(false,winnerId);void syncPvpState('completed',winnerId);}else{recordBattleResult();renderBattleLog();}
   $('finalPlayerScore').textContent = state.score;
   $('finalBotScore').textContent = state.opponentScore;
-  $('gameOverTitle').textContent = state.score === state.opponentScore ? t('gameOverDraw') : state.score > state.opponentScore ? t('gameOverWin') : t('gameOverLoss');
-  $('gameOverCopy').textContent = t('gameOverCopy');
+  $('finalBotLabel').textContent = wasPvp ? pvpOpponentName() : t('opponentBot');
+  $('gameOverTitle').textContent = state.score === state.opponentScore ? t('gameOverDraw') : state.score > state.opponentScore ? t('gameOverWin') : wasPvp ? t('pvpLost') : t('gameOverLoss');
+  $('gameOverCopy').textContent = wasPvp ? t('pvpFinishedCopy') : t('gameOverCopy');
   $('gameOverDialog').showModal();
   const result = state.score === state.opponentScore ? 'draw' : state.score > state.opponentScore ? 'victory' : 'defeat';
   playTone(result);
 }
 
 async function startMatch(difficulty = state.difficulty) {
+  state.selectedMode='bot'; state.pvpMatchId=null; state.pvpMatchVersion=0; state.pvpOpponent=null; state.pvpTerminalHandled=false;
   if (pausedMatch) abandonPausedMatch('new_match');
   state.difficulty = difficulty;
   state.matchToken += 1;
@@ -1947,7 +2152,7 @@ function initializeMatch() {
   state.tableauMarkers = { player: [], opponent: [] };
   state.lastTaker = null;
   state.turn = Math.random() < 0.5 ? 'player' : 'opponent';
-  state.message = state.turn === 'player' ? t('playerStarts') : t('botStarts');
+  state.message = state.turn === 'player' ? t('playerStarts') : state.selectedMode === 'pvp' ? t('pvpOpponentStarts') : t('botStarts');
   state.pendingPlay = null;
   state.pendingCaptureGroups = [];
   state.pendingSelection = [];
@@ -1963,7 +2168,8 @@ function initializeMatch() {
     window.setTimeout(() => { state.animating = false; renderGame(); }, motionDelay('deal'));
   }
   playTone('success');
-  if (state.turn === 'opponent') window.setTimeout(() => opponentMove(state.matchToken), motionDelay('deal') + 70);
+  if (state.selectedMode === 'pvp') void syncPvpInitialize();
+  else if (state.turn === 'opponent') window.setTimeout(() => opponentMove(state.matchToken), motionDelay('deal') + 70);
 }
 
 function pauseCurrentMatch() {
@@ -2205,6 +2411,14 @@ function bootLoading() {
 
 $('menuPlayBtn').addEventListener('click', () => { playTone('button'); showScreen('modeScreen'); });
 $('botModeBtn').addEventListener('click', () => { playTone('button'); showScreen('difficultyScreen'); });
+$('realPlayerBtn').addEventListener('click', () => { playTone('button'); openPvpMode(); });
+$('pvpBackBtn').addEventListener('click', () => { playTone('button'); showScreen('modeScreen'); });
+$('pvpFriendsBtn').addEventListener('click', () => { playTone('button'); openPvpFriends(); });
+$('pvpMatchmakingBtn').addEventListener('click', () => { playTone('button'); void startPvpMatchmaking(); });
+$('pvpFriendsBackBtn').addEventListener('click', () => { playTone('button'); showScreen('pvpModeScreen'); });
+$('pvpMatchmakingCancelBtn').addEventListener('click', () => { playTone('button'); void cancelPvpMatchmaking(); });
+$('pvpFriendsList').addEventListener('click', event => { const btn=event.target.closest('.pvp-invite-friend'); if(btn){playTone('button');void sendPvpInvite(btn.dataset.playerId);} });
+$('pvpInviteNotification').addEventListener('click', event => { const accept=event.target.closest('.pvp-invite-accept'),reject=event.target.closest('.pvp-invite-reject'); if(accept){playTone('button');void respondToPvpInvite(accept.dataset.inviteId,true);} if(reject){playTone('button');void respondToPvpInvite(reject.dataset.inviteId,false);} });
 $('modeBackBtn').addEventListener('click', () => { playTone('button'); showScreen('menuScreen'); });
 $('difficultyBackBtn').addEventListener('click', () => { playTone('button'); showScreen('modeScreen'); });
 document.querySelectorAll('.difficulty-card').forEach(btn => btn.addEventListener('click', () => { playTone('button'); void startMatch(btn.dataset.difficulty); }));
@@ -2352,7 +2566,7 @@ $('closeRulesBtn').addEventListener('click', () => {
   $('rulesDialog').close();
   forceModalCleanup();
 });
-$('gameMenuBtn').addEventListener('click', () => { playTone('button'); pauseCurrentMatch(); });
+$('gameMenuBtn').addEventListener('click', () => { playTone('button'); if(isPvpMode()) void abandonPvpMatch(); else pauseCurrentMatch(); });
 $('restartMatchBtn').addEventListener('click', () => { playTone('button'); void startMatch(state.difficulty); });
 $('rejoinMatchBtn').addEventListener('click', () => { playTone('button'); restoreMatchFromPause(); });
 $('abandonMatchBtn').addEventListener('click', () => { playTone('button'); abandonPausedMatch('manual'); });
@@ -2398,7 +2612,7 @@ $('menuInstallBtn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('menuInstallBtn').hidden = true;
 });
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=079-friend-profile-modal').catch(() => {});
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js?v=080-pvp').catch(() => {});
 
 applyLanguage();
 dialogElements().forEach(dialog => {
@@ -2426,6 +2640,7 @@ try { renderProfile(); } catch {}
 try { renderResumeBar(); } catch {}
 try { startFriendsHeartbeat(); } catch {}
 try { startFriendsRealtime(); } catch {}
+try { startPvpPolling(); } catch {}
 
 // Safety net: a backend/browser API issue must never leave the app on the loading screen.
 window.setTimeout(() => {

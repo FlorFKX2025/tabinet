@@ -1,5 +1,5 @@
-const CACHE = 'tabinet-v0.7.9-pages-friend-profile-modal';
-const ASSETS = ['./', './index.html', './styles.css?v=079-friend-profile-modal', './rules.js?v=079-friend-profile-modal', './app.js?v=079-friend-profile-modal', './manifest.webmanifest', './icons/icon.svg?v=079-friend-profile-modal'];
+const CACHE = 'tabinet-v0.8.0-pages-pvp';
+const ASSETS = ['./', './index.html', './styles.css?v=080-pvp', './rules.js?v=080-pvp', './app.js?v=080-pvp', './manifest.webmanifest', './icons/icon.svg?v=080-pvp'];
 
 self.addEventListener('install', event => {
   event.waitUntil(

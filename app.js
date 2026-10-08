@@ -49,6 +49,10 @@ const state = {
   pvpMatchVersion: 0,
   pvpOpponent: null,
   pvpTerminalHandled: false,
+  pvpAbandonExpiresAt: null,
+  pvpAbandonBy: null,
+  pvpLeavingMatchId: null,
+  pvpRematchPending: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -445,6 +449,8 @@ function applyPvpMatchState(match) {
   state.pendingPlay=null; state.pendingCaptureGroups=[]; state.pendingSelection=[]; state.pendingStackCard=null; state.pendingPlaySourceRect=null;
   state.pendingTableauCards=[]; state.waitingForTableau=false; state.dealing=false; state.animating=false;
   state.pvpMatchVersion=Number(match.version||0);
+  state.pvpAbandonExpiresAt=match.status==='abandon_pending' ? (match.abandon_expires_at || null) : null;
+  state.pvpAbandonBy=match.status==='abandon_pending' ? (match.abandoned_by || null) : null;
   const turnId=String(match.turn_player_id||'').toUpperCase();
   state.turn=turnId===String(profile.id||'').toUpperCase()?'player':'opponent';
   if(match.status!=='active') state.turn='done';
@@ -502,69 +508,108 @@ function recordPvpBattleResult(abandoned=false,winnerId=null){
 async function showPvpTerminal(match,suppressDialog=false){
   if(!match||match.id!==state.pvpMatchId||state.pvpTerminalHandled)return;
   if(match.state)applyPvpMatchState(match);
+  state.pvpAbandonExpiresAt=null;state.pvpAbandonBy=null;state.pvpLeavingMatchId=null;
   state.turn='done';state.dealing=false;state.animating=false;
-  const winner=String(match.winner_player_id||'').toUpperCase(),mine=String(profile.id||'').toUpperCase(),abandoned=match.status==='abandoned';
-  state.message=abandoned?(winner===mine?t('pvpWonAbandoned'):t('pvpLostAbandoned')):(state.score===state.opponentScore?t('gameOverDraw'):state.score>state.opponentScore?t('pvpWon'):t('pvpLost'));
-  renderGame();recordPvpBattleResult(abandoned,match.winner_player_id||pvpWinnerFromLocalState());
+  const winner=String(match.winner_player_id||'').toUpperCase(),mine=String(profile.id||'').toUpperCase();
+  const isDraw=!winner,iWon=!isDraw&&winner===mine,abandoned=match.status==='abandoned';
+  const resultKind=isDraw?'draw':iWon?'victory':'defeat';
+  state.message=abandoned?(iWon?t('pvpWonAbandoned'):t('pvpLostAbandoned')):(isDraw?t('gameOverDraw'):iWon?t('pvpWon'):t('pvpLost'));
+  renderGame();
+  recordPvpBattleResult(abandoned,match.winner_player_id||pvpWinnerFromLocalState());
   if(suppressDialog)return;
-  $('finalPlayerScore').textContent=state.score;$('finalBotScore').textContent=state.opponentScore;$('finalBotLabel').textContent=pvpOpponentName();
-  $('gameOverTitle').textContent=abandoned?(winner===mine?t('pvpWonAbandoned'):t('pvpLostAbandoned')):(state.score===state.opponentScore?t('gameOverDraw'):state.score>state.opponentScore?t('gameOverWin'):t('pvpLost'));
-  $('gameOverCopy').textContent=abandoned?t('pvpAbandonedCopy'):t('pvpFinishedCopy'); if(!$('gameOverDialog').open)$('gameOverDialog').showModal();
+  $('finalPlayerScore').textContent=state.score;$('finalBotScore').textContent=state.opponentScore;
+  $('finalBotLabel').textContent=pvpOpponentName();
+  $('gameOverTitle').textContent=abandoned?(iWon?t('pvpWonAbandoned'):t('pvpLostAbandoned')):(isDraw?t('gameOverDraw'):iWon?t('gameOverWin'):t('pvpLost'));
+  $('gameOverCopy').textContent=abandoned?t('pvpAbandonedCopy'):t('pvpFinishedCopy');
+  $('gameOverRematchBtn').disabled=false;$('gameOverRematchBtn').textContent=t('pvpRematch');state.pvpRematchPending=false;
+  if(!$('gameOverDialog').open)$('gameOverDialog').showModal();
+  playTone(resultKind);
 }
-
 async function enterPvpMatch(matchId){
   if(!matchId||pvpActionBusy)return;
-  clearPausedMatch();
-  pvpActionBusy=true;
+  clearPausedMatch();pvpActionBusy=true;
   try{
     const match=await fetchPvpMatch(matchId);if(!match)return;
-    state.selectedMode='pvp';state.pvpMatchId=match.id;state.pvpMatchVersion=Number(match.version||0);state.pvpOpponent=match.opponent||null;state.pvpTerminalHandled=false;
-    if(match.status!=='active'){await showPvpTerminal(match);return;}
+    state.selectedMode='pvp';state.pvpMatchId=match.id;state.pvpMatchVersion=Number(match.version||0);
+    state.pvpOpponent=match.opponent||null;state.pvpTerminalHandled=false;state.pvpLeavingMatchId=null;state.pvpRematchPending=false;
+    $('gameOverDialog')?.close();
+    if(match.status==='abandoned'||match.status==='completed'){await showPvpTerminal(match);return;}
+    if(match.status==='abandon_pending'){
+      if(match.state)applyPvpMatchState(match);
+      state.pvpAbandonExpiresAt=match.abandon_expires_at||null;state.pvpAbandonBy=match.abandoned_by||null;state.turn='done';
+      showScreen('gameScreen');renderGame();return;
+    }
     if(match.state){applyPvpMatchState(match);showScreen('gameScreen');return;}
-    const token=++state.matchToken;state.turn='menu';state.dealing=true;state.animating=false;state.deck=[];state.hand=[];state.opponentHand=[];state.tableStacks=[];
+    const token=++state.matchToken;
+    state.turn='menu';state.dealing=true;state.animating=false;state.deck=[];state.hand=[];state.opponentHand=[];state.tableStacks=[];
     showScreen('gameScreen');renderGame();await runShuffleAnimation(token);if(token!==state.matchToken)return;
     const latest=await fetchPvpMatch(matchId);if(!latest)return;state.pvpOpponent=latest.opponent||state.pvpOpponent;
-    if(latest.status!=='active'){await showPvpTerminal(latest);return;}
+    if(latest.status==='abandoned'||latest.status==='completed'){await showPvpTerminal(latest);return;}
+    if(latest.status==='abandon_pending'){
+      if(latest.state)applyPvpMatchState(latest);
+      state.pvpAbandonExpiresAt=latest.abandon_expires_at||null;state.pvpAbandonBy=latest.abandoned_by||null;state.turn='done';renderGame();return;
+    }
     if(latest.state){applyPvpMatchState(latest);showScreen('gameScreen');}else initializeMatch();
   }finally{pvpActionBusy=false;}
 }
-
 function renderPvpInviteNotification(requests){
   const box=$('pvpInviteNotification');if(!box)return;const rows=Array.isArray(requests)?requests:[];
   if(!rows.length||state.screen==='game'){box.classList.add('hidden');box.innerHTML='';return;}
   box.classList.remove('hidden');
   box.innerHTML=rows.slice(0,3).map(req=>'<article class="pvp-invite-item"><div class="pvp-invite-copy"><span class="pvp-invite-kicker">'+escapeHtml(t('pvpInviteKicker'))+'</span><strong>'+escapeHtml(req.name||'Jucător')+'</strong><small>'+escapeHtml(t('pvpInviteCopy'))+'</small></div><div class="pvp-invite-actions"><button class="primary small-btn pvp-invite-accept" type="button" data-invite-id="'+escapeHtml(req.id||'')+'">'+escapeHtml(t('pvpAccept'))+'</button><button class="secondary small-btn pvp-invite-reject" type="button" data-invite-id="'+escapeHtml(req.id||'')+'">'+escapeHtml(t('pvpReject'))+'</button></div></article>').join('');
 }
+function renderPvpRematchNotification(requests){
+  const box=$('pvpRematchNotification');if(!box)return;const rows=Array.isArray(requests)?requests:[];
+  if(!rows.length||state.screen==='game'){box.classList.add('hidden');box.innerHTML='';return;}
+  box.classList.remove('hidden');
+  box.innerHTML=rows.slice(0,3).map(req=>'<article class="pvp-invite-item rematch-invite-item"><div class="pvp-invite-copy"><span class="pvp-invite-kicker">'+escapeHtml(t('pvpRematchKicker'))+'</span><strong>'+escapeHtml(req.name||'Jucător')+'</strong><small>'+escapeHtml(t('pvpRematchCopy'))+'</small></div><div class="pvp-invite-actions"><button class="primary small-btn pvp-rematch-accept" type="button" data-rematch-id="'+escapeHtml(req.id||'')+'">'+escapeHtml(t('pvpAccept'))+'</button><button class="secondary small-btn pvp-rematch-reject" type="button" data-rematch-id="'+escapeHtml(req.id||'')+'">'+escapeHtml(t('pvpReject'))+'</button></div></article>').join('');
+}
 function pvpOutgoingSet(){return new Set((window.__tabinetPvpDashboard?.outgoing_invites||[]).map(item=>String(item.player_id||'').toUpperCase()));}
 function renderPvpFriends(){
   const list=$('pvpFriendsList');if(!list)return;const friends=Array.isArray(window.__tabinetFriends)?window.__tabinetFriends:[],outgoing=pvpOutgoingSet();list.innerHTML='';
-  if($('pvpFriendsCount')) $('pvpFriendsCount').textContent=String(friends.length);
-  if($('pvpFriendsOnlineCount')) $('pvpFriendsOnlineCount').textContent=String(friends.filter(friend=>friend.online).length);
+  if($('pvpFriendsCount'))$('pvpFriendsCount').textContent=String(friends.length);
+  if($('pvpFriendsOnlineCount'))$('pvpFriendsOnlineCount').textContent=String(friends.filter(friend=>friend.online).length);
   if(!friends.length){list.innerHTML='<div class="friends-empty">'+escapeHtml(t('pvpNoFriends'))+'</div>';return;}
   friends.forEach(friend=>{
-    const key=String(friend.player_id||'').toUpperCase(),pending=outgoing.has(key),row=document.createElement('article');row.className='pvp-friend-row';
-    row.innerHTML='<div class="friend-user">'+friendAvatarMarkup(friend.avatar)+'<div class="friend-user-copy"><strong>'+escapeHtml(friend.name||'Jucător')+'</strong><small>'+escapeHtml(friend.player_id||'')+'</small></div></div><div class="pvp-friend-actions"><span class="friend-status '+(friend.online?'online':'offline')+'"><i></i>'+escapeHtml(friendLastSeenText(friend.last_seen,Boolean(friend.online)))+'</span><button class="primary small-btn pvp-invite-friend" type="button" data-player-id="'+escapeHtml(friend.player_id||'')+'"'+(pending?' disabled':'')+'>'+escapeHtml(pending?t('pvpInviteSent'):t('pvpInviteFriend'))+'</button></div>';
+    const key=String(friend.player_id||'').toUpperCase(),pending=outgoing.has(key),invite=(window.__tabinetPvpDashboard?.outgoing_invites||[]).find(x=>String(x.player_id||'').toUpperCase()===key);
+    const action=pending
+      ? '<button class="secondary small-btn pvp-cancel-invite" type="button" data-player-id="'+escapeHtml(friend.player_id||'')+'" data-invite-id="'+escapeHtml(invite?.id||'')+'">'+escapeHtml(t('pvpCancelInvite'))+'</button>'
+      : '<button class="primary small-btn pvp-invite-friend" type="button" data-player-id="'+escapeHtml(friend.player_id||'')+'">'+escapeHtml(t('pvpInviteFriend'))+'</button>';
+    const row=document.createElement('article');row.className='pvp-friend-row';
+    row.innerHTML='<div class="friend-user">'+friendAvatarMarkup(friend.avatar)+'<div class="friend-user-copy"><strong>'+escapeHtml(friend.name||'Jucător')+'</strong><small>'+escapeHtml(friend.player_id||'')+'</small></div></div><div class="pvp-friend-actions"><span class="friend-status '+(friend.online?'online':'offline')+'"><i></i>'+escapeHtml(friendLastSeenText(friend.last_seen,Boolean(friend.online)))+'</span>'+action+'</div>';
     list.appendChild(row);
   });
 }
+
 async function refreshPvpDashboard(){
   if(!tabinetSupabase||!profile?.id||document.visibilityState==='hidden')return;
   try{
     const result=await tabinetRpc('tabinet_get_pvp_dashboard',{p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});if(!result?.ok)return;
-    window.__tabinetPvpDashboard=result;renderPvpInviteNotification(result.incoming_invites||[]);renderPvpFriends();
-    const active=result.active_match;
+    window.__tabinetPvpDashboard=result;renderPvpInviteNotification(result.incoming_invites||[]);renderPvpRematchNotification(result.incoming_rematches||[]);renderPvpFriends();
+    const active=result.active_match,leavingId=String(state.pvpLeavingMatchId||'');
+    if(active&&leavingId&&String(active.id)===leavingId){if(active.status==='abandon_pending')return;state.pvpLeavingMatchId=null;}
     if(state.pvpMatchId&&(!active||String(active.id)!==String(state.pvpMatchId))){
       const previous=await fetchPvpMatch(state.pvpMatchId);
-      if(previous&&previous.status!=='active'){
-        const hasNew=Boolean(active);
-        if(!state.pvpTerminalHandled){if(previous.state)applyPvpMatchState(previous);recordPvpBattleResult(previous.status==='abandoned',previous.winner_player_id||null);}
-        if(!hasNew){await showPvpTerminal(previous);return;}
+      if(previous&&previous.status!=='active'&&previous.status!=='abandon_pending'){
+        const hasNew=Boolean(active);if(!state.pvpTerminalHandled)await showPvpTerminal(previous);if(!hasNew)return;
         state.pvpMatchId=null;state.pvpMatchVersion=0;state.pvpOpponent=null;state.pvpTerminalHandled=false;
       }
     }
     if(active){
-      if(String(state.pvpMatchId||'')!==String(active.id||''))void enterPvpMatch(active.id);
-      else if(Number(active.version||0)>Number(state.pvpMatchVersion||0)){const current=await fetchPvpMatch(active.id);if(current?.state)applyPvpMatchState(current);}
+      if(String(state.pvpMatchId||'')!==String(active.id||'')){
+        if(active.status==='abandon_pending'){if(!leavingId)void enterPvpMatch(active.id);}else void enterPvpMatch(active.id);
+      }else if(Number(active.version||0)>Number(state.pvpMatchVersion||0)){
+        const current=await fetchPvpMatch(active.id);
+        if(current?.status==='abandon_pending'){
+          if(current.state)applyPvpMatchState(current);
+          state.pvpAbandonExpiresAt=current.abandon_expires_at||null;state.pvpAbandonBy=current.abandoned_by||null;state.turn='done';renderGame();
+        }else if(current?.status==='abandoned'||current?.status==='completed')await showPvpTerminal(current);
+        else if(current?.state)applyPvpMatchState(current);
+      }else if(active.status==='abandon_pending'){
+        state.pvpAbandonExpiresAt=active.abandon_expires_at||state.pvpAbandonExpiresAt;
+        state.pvpAbandonBy=active.abandoned_by||state.pvpAbandonBy;
+        state.turn='done';renderGame();
+      }
     }
   }catch{}
 }
@@ -593,11 +638,19 @@ async function cancelPvpMatchmaking(){
 }
 async function abandonPvpMatch(){
   const matchId=state.pvpMatchId;if(!matchId){goToMenu();return;}
-  try{const result=await tabinetRpc('tabinet_abandon_pvp_match',{p_match_id:matchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});if(result?.ok)recordPvpBattleResult(true,pvpOpponentId());}catch{}
-  state.matchToken+=1;state.pvpMatchId=null;state.pvpMatchVersion=0;state.pvpOpponent=null;state.pvpTerminalHandled=false;state.selectedMode='bot';state.turn='menu';state.message='';
-  if($('gameOverDialog')?.open)$('gameOverDialog').close();showScreen('menuScreen');
+  const previousOpponentId=pvpOpponentId();
+  try{
+    const result=await tabinetRpc('tabinet_abandon_pvp_match',{p_match_id:matchId,p_player_id:profile.id,p_device_token:getFriendsDeviceToken()});
+    if(result?.ok&&result.status==='abandon_pending'){
+      state.pvpLeavingMatchId=matchId;state.pvpAbandonExpiresAt=result.abandon_expires_at||null;state.pvpAbandonBy=profile.id;
+      state.pvpMatchId=null;state.pvpMatchVersion=0;state.pvpOpponent=null;state.pvpTerminalHandled=false;state.selectedMode='bot';state.turn='menu';state.message='';
+      showScreen('menuScreen');return;
+    }
+    if(result?.ok&&result.status==='abandoned')recordPvpBattleResult(true,result.winner_player_id||previousOpponentId);
+  }catch{}
+  state.matchToken+=1;state.pvpMatchId=null;state.pvpMatchVersion=0;state.pvpOpponent=null;state.pvpAbandonExpiresAt=null;state.pvpAbandonBy=null;state.pvpLeavingMatchId=null;state.pvpTerminalHandled=false;state.selectedMode='bot';state.turn='menu';state.message='';
+  $('gameOverDialog')?.close();showScreen('menuScreen');
 }
-
 function startFriendsHeartbeat() {
   if (!tabinetSupabase) return;
   void syncProfileOnline();
@@ -1007,6 +1060,11 @@ function playTone(kind = 'click') {
         {f:261.63, to:235.0, d:.35, l:.22, w:'sine', a:.78},
         {f:196.0, to:174.0, d:.56, l:.32, w:'sine', a:.72},
       ],
+      draw: [
+        {f:440.0, to:440.0, d:0, l:.18, w:'sine', a:.75},
+        {f:554.37, to:554.37, d:.18, l:.18, w:'sine', a:.8},
+        {f:493.88, to:493.88, d:.36, l:.24, w:'triangle', a:.7},
+      ],
       gameover: [{f:430, to:380, d:0, l:.14, w:'triangle', a:.85}, {f:350, to:300, d:.16, l:.14, w:'sine', a:.8}, {f:560, to:720, d:.32, l:.22, w:'sine', a:1.1}],
     };
     const notes = patterns[kind] || patterns.button;
@@ -1181,7 +1239,7 @@ const I18N = {
     menuTitle: 'Joacă simplu. Ia tot.', menuSubtitle: 'Intră într-o partidă în câteva secunde.', menuPill: 'MVP • BOT DISPONIBIL', menuHeroTitle: 'O partidă relaxată, direct în browser.', menuHeroCopy: 'Nu ai nevoie de instalări. Alegi adversarul, dificultatea și intri la masă.', menuVersion: 'v0.8.0 • PvP + matchmaking + invitații',
     settings: 'Setări', settingsCopy: 'Sunete, animații și limbă', friendsMenu: 'Prieteni', friendsMenuCopy: 'Adaugă și gestionează prietenii', rules: 'Reguli', rulesCopy: 'Vezi cum se joacă', play: 'Joacă', back: 'Înapoi',
     step1: 'PASUL 1', modeTitle: 'Cum vrei să joci?', modeCopy: 'Alege un adversar. Multiplayer-ul cu alt jucător vine în curând.', bot: 'Cu bot', botCopy: 'Joacă acum împotriva unui adversar controlat de joc.', choose: 'Alege →', realPlayer:'Cu player real', realCopy:'Joacă online cu un prieten sau caută un adversar.',
-    pvpStep:'PASUL 2', pvpModeTitle:'Cum vrei să alegi adversarul?', pvpModeCopy:'Provoacă direct un prieten sau lasă jocul să găsească un jucător disponibil.', pvpFriendTitle:'Contra unui prieten', pvpFriendCopy:'Alege unul dintre prietenii tăi și trimite-i invitația.', pvpMatchmakingChoiceTitle:'Matchmaking', pvpMatchmakingChoiceCopy:'Intră în coadă și te potrivim automat cu un jucător.', pvpFriendsTitle:'Alege un prieten', pvpFriendsCopy:'Invitația apare în meniul principal al prietenului și poate fi acceptată sau refuzată.', pvpMatchmakingTitle:'Căutăm un adversar', pvpSearchCopy:'Te conectăm cu primul jucător disponibil.', pvpSearching:'Se caută un adversar…', pvpMatched:'Adversar găsit! Se pregătește masa…', pvpMatchError:'Nu am putut intra în matchmaking.', pvpNoFriends:'Nu ai încă prieteni pe care îi poți provoca.', pvpInviteFriend:'Provoacă', pvpInviteSent:'Invitație trimisă', pvpInviteKicker:'INVITAȚIE LA MECI', pvpInviteCopy:'vrea să joace Tabinet cu tine.', pvpAccept:'Acceptă', pvpReject:'Refuză', pvpInviteError:'Nu s-a putut trimite invitația.', pvpBackendError:'Serviciul online nu este disponibil momentan.', pvpPlayerLabel:'PLAYER', pvpWaitingOpponent:'Așteaptă mutarea adversarului…', pvpOpponentThinking:'Adversarul se gândește…', pvpWaitHint:'Așteaptă mutarea adversarului.', pvpOpponentStarts:'Adversarul începe această mână.', matchPlayer:'Meci PvP', pvpWon:'Ai câștigat.', pvpLost:'Ai pierdut.', pvpWonAbandoned:'Ai câștigat prin abandon.', pvpLostAbandoned:'Ai pierdut prin abandon.', pvpAbandonedCopy:'Meciul s-a încheiat deoarece unul dintre jucători a abandonat.', pvpFinishedCopy:'Meciul PvP s-a încheiat.', historyKicker: 'ISTORIC', historyTitle: 'Log-uri meciuri', historyCopyMode: 'Vezi cu cine ai jucat, scorurile și cum a decurs partida.', viewLogs: 'Vezi log-urile',
+    pvpStep:'PASUL 2', pvpModeTitle:'Cum vrei să alegi adversarul?', pvpModeCopy:'Provoacă direct un prieten sau lasă jocul să găsească un jucător disponibil.', pvpFriendTitle:'Contra unui prieten', pvpFriendCopy:'Alege unul dintre prietenii tăi și trimite-i invitația.', pvpMatchmakingChoiceTitle:'Matchmaking', pvpMatchmakingChoiceCopy:'Intră în coadă și te potrivim automat cu un jucător.', pvpFriendsTitle:'Alege un prieten', pvpFriendsCopy:'Invitația apare în meniul principal al prietenului și poate fi acceptată sau refuzată.', pvpMatchmakingTitle:'Căutăm un adversar', pvpSearchCopy:'Te conectăm cu primul jucător disponibil.', pvpSearching:'Se caută un adversar…', pvpMatched:'Adversar găsit! Se pregătește masa…', pvpMatchError:'Nu am putut intra în matchmaking.', pvpNoFriends:'Nu ai încă prieteni pe care îi poți provoca.', pvpInviteFriend:'Provoacă', pvpInviteSent:'Invitație trimisă', pvpInviteKicker:'INVITAȚIE LA MECI', pvpInviteCopy:'vrea să joace Tabinet cu tine.', pvpAccept:'Acceptă', pvpReject:'Refuză', pvpInviteError:'Nu s-a putut trimite invitația.', pvpBackendError:'Serviciul online nu este disponibil momentan.', pvpPlayerLabel:'PLAYER', pvpWaitingOpponent:'Așteaptă mutarea adversarului…', pvpOpponentThinking:'Adversarul se gândește…', pvpWaitHint:'Așteaptă mutarea adversarului.', pvpOpponentStarts:'Adversarul începe această mână.', matchPlayer:'Meci PvP', pvpWon:'Ai câștigat.', pvpLost:'Ai pierdut.', pvpWonAbandoned:'Ai câștigat prin abandon.', pvpLostAbandoned:'Ai pierdut prin abandon.', pvpAbandonedCopy:'Meciul s-a încheiat deoarece unul dintre jucători a abandonat.', pvpAbandonWaiting:'Așteaptă-l pe {name}…', pvpRematch:'Răzbunare', pvpRematchSent:'Cerere trimisă', pvpRematchKicker:'CERERE DE RĂZBUNARE', pvpRematchCopy:'vrea revanșă.', pvpCancelInvite:'Anulează invitația', pvpAbandonWaiting:'Wait for {name}…', pvpRematch:'Fight again', pvpRematchSent:'Request sent', pvpRematchKicker:'REVENGE REQUEST', pvpRematchCopy:'wants a rematch.', pvpCancelInvite:'Cancel invite', pvpFinishedCopy:'Meciul PvP s-a încheiat.', historyKicker: 'ISTORIC', historyTitle: 'Log-uri meciuri', historyCopyMode: 'Vezi cu cine ai jucat, scorurile și cum a decurs partida.', viewLogs: 'Vezi log-urile',
     step2: 'PASUL 2', difficultyTitle: 'Cât de greu vrei să fie?', difficultyCopy: 'Alege ritmul și nivelul botului.', easy: 'Ușor', easyCopy: 'Bot relaxat, potrivit pentru primele partide.', medium: 'Mediu', mediumCopy: 'Bot echilibrat, caută capturi și puncte.', hard: 'Mare', hardCopy: 'Bot competitiv, analizează mai multe mutări.',
     matchBot: 'Meci cu bot', deck: 'în pachet', table: 'MASĂ', opponent: 'ADVERSAR', yourHand: 'MÂNA TA', you:'TU', botLabel:'BOT', pile: 'teanc de puncte', playerTableauLabel:'TABLELE', opponentTableauLabel:'TABLELE', playerTableauActive:'active', opponentTableauActive:'active', newGame: 'Joc nou', round: 'MÂNA', lastHand: 'ULTIMA MÂNĂ', yourTurn: 'Este rândul tău', botThinking: 'Botul se gândește…', gameEnded: 'Partida s-a încheiat', chooseCard: 'Alege o carte.', waitBot: 'Așteaptă mutarea botului.', tapHint: 'Click = joacă · Ține apăsat = stivă · Trage pe masă = pune fără captură.', waitHint: 'Așteaptă mutarea botului.', deckRemaining:'în pachet', battleLogTitle:'BATTLE LOG', recentMatches:'ultimele meciuri', playerStarts:'Începi tu.', botStarts:'Botul începe această mână.',
     captureKicker:'CAPTURĂ', captureTitle:'Ai mai multe variante', cancel:'Anulează', takeCards:'Ia cărțile', selected:'Ai selectat', cardsWord:'cărți', cardWord:'carte', selectCapture:'Selectează cel puțin o captură.', optionTarget:'Cu {card} ai {count} variante. Selectează una sau mai multe variante care nu folosesc aceleași cărți.',
@@ -1265,6 +1323,7 @@ function applyLanguage() {
   setNested('botModeBtn','bot','botCopy','choose');
   const real = $('realPlayerBtn');
   if (real) { const title=real.querySelector('.big-choice-title'),copy=real.querySelector('.big-choice-copy'),cta=real.querySelector('.choice-cta'); if(title)title.textContent=t('realPlayer'); if(copy)copy.textContent=t('realCopy'); if(cta)cta.textContent=t('choose'); real.disabled=false; }
+  renderPvpRematchNotification(window.__tabinetPvpDashboard?.incoming_rematches||[]);
   set('pvpModeKicker','pvpStep'); set('pvpModeTitle','pvpModeTitle'); set('pvpModeCopy','pvpModeCopy'); set('pvpFriendTitle','pvpFriendTitle'); set('pvpFriendCopy','pvpFriendCopy'); set('pvpMatchmakingChoiceTitle','pvpMatchmakingChoiceTitle'); set('pvpMatchmakingChoiceCopy','pvpMatchmakingChoiceCopy'); set('pvpFriendsTitle','pvpFriendsTitle'); set('pvpFriendsCopy','pvpFriendsCopy'); set('pvpMatchmakingTitle','pvpMatchmakingTitle'); set('pvpSearchingHint','pvpSearchCopy'); set('pvpBackBtn','back'); set('pvpFriendsBackBtn','back'); set('pvpMatchmakingCancelBtn','back'); renderPvpInviteNotification(window.__tabinetPvpDashboard?.incoming_invites||[]); renderPvpFriends();
   const difficultyText = {
     easy:['easy','easyCopy'], medium:['medium','mediumCopy'], hard:['hard','hardCopy']
@@ -1620,7 +1679,13 @@ function renderGame() {
   const recentMatches = $('recentMatches'); if (recentMatches) recentMatches.textContent = t('recentMatches');
   const gameIsPvp=state.selectedMode==='pvp';
   if ($('restartMatchBtn')) $('restartMatchBtn').textContent = gameIsPvp ? t('abandon') : t('newGame');
+  if ($('gameOverRematchBtn')) $('gameOverRematchBtn').textContent = gameIsPvp ? t(state.pvpRematchPending ? 'pvpRematchSent' : 'pvpRematch') : t('rematch');
   $('botMeta').textContent=gameIsPvp?t('pvpPlayerLabel'):difficultyLabel(state.difficulty);
+  const opponentAvatar=$('opponentAvatar');
+  if(opponentAvatar){
+    if(gameIsPvp&&state.pvpOpponent?.avatar)renderAvatar(opponentAvatar,state.pvpOpponent.avatar);
+    else{opponentAvatar.innerHTML='BOT';opponentAvatar.classList.add('bot-avatar');}
+  }
   if($('opponentChipName'))$('opponentChipName').textContent=gameIsPvp?pvpOpponentName():t('botLabel');
   if($('opponentRailLabel'))$('opponentRailLabel').textContent=gameIsPvp?pvpOpponentName():t('botLabel');
   $('playerTurnMeta').textContent=state.turn==='player'?t('yourTurn'):gameIsPvp?t('pvpWaitingOpponent'):t('waitBot');
@@ -1646,6 +1711,7 @@ function renderGame() {
   renderTableauPile($('playerTableauPile'), state.tableauMarkers.player, 'player');
   renderTableauPile($('opponentTableauPile'), state.tableauMarkers.opponent, 'bot');
   renderBattleLog();
+  renderPvpAbandonOverlay();
   startAnimationsForRender();
 }
 
@@ -2427,7 +2493,12 @@ $('pvpFriendsBtn').addEventListener('click', () => { playTone('button'); openPvp
 $('pvpMatchmakingBtn').addEventListener('click', () => { playTone('button'); void startPvpMatchmaking(); });
 $('pvpFriendsBackBtn').addEventListener('click', () => { playTone('button'); showScreen('pvpModeScreen'); });
 $('pvpMatchmakingCancelBtn').addEventListener('click', () => { playTone('button'); void cancelPvpMatchmaking(); });
-$('pvpFriendsList').addEventListener('click', event => { const btn=event.target.closest('.pvp-invite-friend'); if(btn){playTone('button');void sendPvpInvite(btn.dataset.playerId);} });
+$('pvpFriendsList').addEventListener('click', event => {
+  const btn=event.target.closest('.pvp-invite-friend'),cancel=event.target.closest('.pvp-cancel-invite');
+  if(btn){playTone('button');void sendPvpInvite(btn.dataset.playerId);}
+  if(cancel){playTone('button');void cancelPvpInvite(cancel.dataset.inviteId);}
+});
+
 $('pvpInviteNotification').addEventListener('click', event => { const accept=event.target.closest('.pvp-invite-accept'),reject=event.target.closest('.pvp-invite-reject'); if(accept){playTone('button');void respondToPvpInvite(accept.dataset.inviteId,true);} if(reject){playTone('button');void respondToPvpInvite(reject.dataset.inviteId,false);} });
 $('modeBackBtn').addEventListener('click', () => { playTone('button'); showScreen('menuScreen'); });
 $('difficultyBackBtn').addEventListener('click', () => { playTone('button'); showScreen('modeScreen'); });
@@ -2581,7 +2652,11 @@ $('restartMatchBtn').addEventListener('click', () => { playTone('button'); if (i
 $('rejoinMatchBtn').addEventListener('click', () => { playTone('button'); restoreMatchFromPause(); });
 $('abandonMatchBtn').addEventListener('click', () => { playTone('button'); abandonPausedMatch('manual'); });
 $('gameOverMenuBtn').addEventListener('click', () => { playTone('button'); goToMenu(); });
-$('gameOverRematchBtn').addEventListener('click', () => { playTone('button'); $('gameOverDialog').close(); void startMatch(state.difficulty); });
+$('gameOverRematchBtn').addEventListener('click', () => {
+  playTone('button');
+  if(isPvpMode())void requestPvpRematch();
+  else{$('gameOverDialog').close();void startMatch(state.difficulty);}
+});
 $('cancelCaptureBtn').addEventListener('click', () => { playTone('button'); closeCaptureChooser(); });
 $('captureConfirmBtn').addEventListener('click', () => { playTone('button'); confirmCapture(); });
 $('cancelStackBtn').addEventListener('click', () => { playTone('button'); state.pendingStackCard = null; $('stackDialog').close(); });
